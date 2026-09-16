@@ -11,7 +11,7 @@ import com.pckeyboard.ime.model.LayoutMode
  *
  * Structure follows the AOSP "Hacker's Keyboard" kbd_full.xml conventions
  * for a desktop-faithful 6-row layout:
- *  - Row 0 (Fn extension): Esc + F1-F11 + Home + End
+ *  - Row 0 (Fn extension): Esc + F1-F12 + Home + End
  *  - Row 1 (Numbers):      ` 1-0 - = ⌫
  *  - Row 2 (Top letters):  Tab + q-p + [ ] \             (locale-specific)
  *  - Row 3 (Home letters): Caps + a-l + ... + Enter      (locale-specific)
@@ -26,6 +26,7 @@ import com.pckeyboard.ime.model.LayoutMode
  */
 internal object LayoutBlocks {
 
+    /** Builds the complete 15-key PC function row while preserving its total weight of 14. */
     fun fnRow(): List<Key> = listOf(
         Key.fn("Esc",  KeyType.ESC, KeyEvent.KEYCODE_ESCAPE),
         Key.fn("F1",   KeyType.FN, KeyEvent.KEYCODE_F1),
@@ -39,9 +40,10 @@ internal object LayoutBlocks {
         Key.fn("F9",   KeyType.FN, KeyEvent.KEYCODE_F9),
         Key.fn("F10",  KeyType.FN, KeyEvent.KEYCODE_F10),
         Key.fn("F11",  KeyType.FN, KeyEvent.KEYCODE_F11),
+        Key.fn("F12",  KeyType.FN, KeyEvent.KEYCODE_F12),
         Key.fn("Home", KeyType.HOME),
         Key.fn("End",  KeyType.END)
-    )
+    ).map { it.copy(widthWeight = FN_ROW_KEY_WEIGHT) }
 
     fun numberRow(): List<Key> = listOf(
         Key.char("`", "~", popup = "~`"),
@@ -169,4 +171,6 @@ internal object LayoutBlocks {
         ),
         mode = LayoutMode.MAIN
     )
+
+    private const val FN_ROW_KEY_WEIGHT = 14f / 15f
 }

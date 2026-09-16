@@ -528,6 +528,11 @@ class KeyboardView @JvmOverloads constructor(
                 isCurrent = current == KeyboardPrefs.RIGHT_OF_SPACE_ALT
             ),
             MenuItem(
+                "⌘", "Meta (Command)",
+                MenuAction.SetRightOfSpace(KeyboardPrefs.RIGHT_OF_SPACE_META),
+                isCurrent = current == KeyboardPrefs.RIGHT_OF_SPACE_META
+            ),
+            MenuItem(
                 "🔣", "123 Symbols",
                 MenuAction.SetRightOfSpace(KeyboardPrefs.RIGHT_OF_SPACE_SYMBOLS),
                 isCurrent = current == KeyboardPrefs.RIGHT_OF_SPACE_SYMBOLS

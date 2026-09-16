@@ -5,6 +5,9 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.inputmethodservice.InputMethodService.Insets
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -23,6 +26,11 @@ import com.pckeyboard.ime.dictionary.RerankerStore
 import com.pckeyboard.ime.dictionary.SuggestionEngine
 import com.pckeyboard.ime.dictionary.TrigramStore
 import com.pckeyboard.ime.dictionary.UserDictionary
+import com.pckeyboard.ime.dispatch.DispatchMode
+import com.pckeyboard.ime.dispatch.QueuedRawKey
+import com.pckeyboard.ime.dispatch.RawKeyDispatcher
+import com.pckeyboard.ime.dispatch.RawKeyMapper
+import com.pckeyboard.ime.dispatch.RawKeyRetryQueue
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
 import com.pckeyboard.ime.model.Key
@@ -65,6 +73,14 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var currentLayoutId: String = "en_US"
     private var currentMode: LayoutMode = LayoutMode.MAIN
     private var keyboardView: KeyboardView? = null
+    private val rawKeyDispatcher = RawKeyDispatcher()
+    private val rawKeyRetryQueue = RawKeyRetryQueue()
+    private val rawRetryHandler = Handler(Looper.getMainLooper())
+    private var rawDrainScheduledAtMs: Long? = null
+    private val rawDrainRunnable = Runnable {
+        rawDrainScheduledAtMs = null
+        drainRawKeyQueue()
+    }
 
     // --- Autocorrect / suggestion state ---------------------------------
     /** Per-editor verdict from [shouldSuggestFor] — false for passwords,
@@ -163,9 +179,34 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onDestroy() {
+        clearRawKeyQueue()
         (getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager)
             ?.removePrimaryClipChangedListener(clipListener)
         super.onDestroy()
+    }
+
+    /** Schedules queued raw keys after the framework binds an input target. */
+    override fun onBindInput() {
+        super.onBindInput()
+        postRawQueueDrain()
+    }
+
+    /** Clears queued raw keys before the bound target can change. */
+    override fun onUnbindInput() {
+        clearRawKeyQueue()
+        super.onUnbindInput()
+    }
+
+    /** Schedules queued raw keys once editor metadata and the latest connection are available. */
+    override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
+        super.onStartInput(attribute, restarting)
+        postRawQueueDrain()
+    }
+
+    /** Clears queued raw keys when the entire input session finishes. */
+    override fun onFinishInput() {
+        clearRawKeyQueue()
+        super.onFinishInput()
     }
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype?) {
@@ -214,6 +255,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     companion object {
         private const val EMOJI_STATE = "__emoji__"
+        private const val RAW_RETRY_INTERVAL_MS = 50L
         /** How many lines Page Up / Page Down skips. */
         private const val PAGE_LINES = 10
         /** How far left of the cursor [currentWord] looks for the start
@@ -294,6 +336,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        postRawQueueDrain()
         // Re-read the persisted language id on every session. The IME
         // may have first started during Direct Boot (lock screen), at
         // which point credential-encrypted storage was empty and we
@@ -315,7 +358,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.applySizingPrefs()
         // Autocorrect: decide per editor whether the suggestion bar makes
         // sense, and warm up the dictionary for the active language.
-        suggestionsEnabled = shouldSuggestFor(info)
+        suggestionsEnabled = !isRawRemoteMode() && shouldSuggestFor(info)
         pendingInsist = null
         lastEventWasTyping = false
         val showBar = suggestionsEnabled &&
@@ -332,7 +375,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // If the user finished the clipboard editor with Send, commit the
         // edited text and persist the replacement into the history.
         ClipboardEditorBridge.consume()?.let { r ->
-            if (r.edited.isNotEmpty()) currentInputConnection?.commitText(r.edited, 1)
+            if (!isRawRemoteMode() && r.edited.isNotEmpty()) {
+                currentInputConnection?.commitText(r.edited, 1)
+            }
             ClipboardHistory(this).replace(r.original, r.edited)
             keyboardView?.refreshClipboard()
         }
@@ -362,6 +407,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      * opens we start clean on the main letters layout.
      */
     override fun onFinishInputView(finishingInput: Boolean) {
+        clearRawKeyQueue()
         super.onFinishInputView(finishingInput)
         // Drop any terminal-derived theme so the next (possibly non-terminal)
         // session starts from the user's saved theme.
@@ -375,6 +421,12 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // Caps Lock, etc. — so reopening the keyboard never lands the
         // user in some "still locked from last session" surprise.
         keyboardView?.resetModifiers()
+    }
+
+    /** Clears pending raw input whenever the IME window is no longer visible. */
+    override fun onWindowHidden() {
+        clearRawKeyQueue()
+        super.onWindowHidden()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -430,7 +482,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private fun bindCurrentLayout() {
         val view = keyboardView ?: return
         view.currentLanguageId = currentLayoutId
-        val pack = LayoutRegistry.get(currentLayoutId)
+        // Raw mode represents a US physical keyboard. Keeping the user's saved language intact
+        // lets Normal mode restore it, while avoiding a second QWERTZ/AZERTY remap on the host.
+        val pack = LayoutRegistry.get(if (isRawRemoteMode()) "en_US" else currentLayoutId)
         val base: KeyboardLayout = when (currentMode) {
             LayoutMode.SYMBOLS -> pack.symbols
             LayoutMode.SYMBOLS_SHIFT -> pack.symbolsShift
@@ -452,7 +506,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         view.bind(finalLayout, activeTheme())
         // Keep the active language's dictionary warm so suggestions are
         // ready the moment the user starts typing after a switch.
-        if (kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_OFF) {
+        if (!isRawRemoteMode() && kbPrefs.autocorrectMode != KeyboardPrefs.AUTOCORRECT_OFF) {
             DictionaryStore.preload(this, currentLayoutId)
             HunspellStore.preload(this, currentLayoutId)
             BigramStore.preload(this, currentLayoutId)
@@ -488,6 +542,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
                         KeyboardPrefs.RIGHT_OF_SPACE_ALT ->
                             Key.fn("Alt", KeyType.ALT, sticky = true, weight = key.widthWeight)
                                 .copy(code = Key.CODE_RIGHT_OF_SPACE)
+                        KeyboardPrefs.RIGHT_OF_SPACE_META ->
+                            Key.fn("⌘", KeyType.META, sticky = true, weight = key.widthWeight)
+                                .copy(code = Key.CODE_RIGHT_OF_SPACE)
                         else -> key.copy(code = Key.CODE_RIGHT_OF_SPACE)
                     }
                 } else key
@@ -509,7 +566,136 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     private fun languageLabelFor(id: String): String = languageCode(id)
 
+    /** Returns true when every supported key must use hardware-like remote dispatch. */
+    private fun isRawRemoteMode(): Boolean = kbPrefs.dispatchMode == DispatchMode.RAW_REMOTE
+
+    /**
+     * Routes one visible keyboard key through the raw event backend.
+     *
+     * Unsupported characters are intentionally dropped: falling back to commitText would bypass
+     * the remote operating system's input method and break the hardware-keyboard contract.
+     */
+    private fun dispatchRawKey(key: Key, modifiers: ModifierState) {
+        when (key.type) {
+            KeyType.SYMBOL_SWITCH -> switchSymbols()
+            KeyType.LAYOUT_SWITCH -> switchSymbolsShift()
+            KeyType.EMOJI -> keyboardView?.showEmojiPicker()
+            KeyType.HIDE -> requestHideSelf(0)
+            KeyType.LETTER, KeyType.CHAR -> {
+                val character = if (modifiers.isShiftActive() && key.shiftLabel != null) {
+                    key.shiftLabel.first()
+                } else {
+                    key.label.first()
+                }
+                val stroke = RawKeyMapper.forCharacter(character) ?: return
+                sendRawKey(stroke.keyCode, modifiers.toMetaState() or stroke.requiredMetaState)
+            }
+            KeyType.SPACE -> sendRawKey(KeyEvent.KEYCODE_SPACE, modifiers.toMetaState())
+            KeyType.ENTER -> sendRawKey(KeyEvent.KEYCODE_ENTER, modifiers.toMetaState())
+            KeyType.BACKSPACE -> sendRawKey(KeyEvent.KEYCODE_DEL, modifiers.toMetaState())
+            KeyType.DELETE -> sendRawKey(KeyEvent.KEYCODE_FORWARD_DEL, modifiers.toMetaState())
+            KeyType.TAB -> sendRawKey(KeyEvent.KEYCODE_TAB, modifiers.toMetaState())
+            KeyType.ESC -> sendRawKey(KeyEvent.KEYCODE_ESCAPE, modifiers.toMetaState())
+            KeyType.ARROW_LEFT -> sendRawKey(KeyEvent.KEYCODE_DPAD_LEFT, modifiers.toMetaState())
+            KeyType.ARROW_RIGHT -> sendRawKey(KeyEvent.KEYCODE_DPAD_RIGHT, modifiers.toMetaState())
+            KeyType.ARROW_UP -> sendRawKey(KeyEvent.KEYCODE_DPAD_UP, modifiers.toMetaState())
+            KeyType.ARROW_DOWN -> sendRawKey(KeyEvent.KEYCODE_DPAD_DOWN, modifiers.toMetaState())
+            KeyType.HOME -> sendRawKey(KeyEvent.KEYCODE_MOVE_HOME, modifiers.toMetaState())
+            KeyType.END -> sendRawKey(KeyEvent.KEYCODE_MOVE_END, modifiers.toMetaState())
+            KeyType.PAGE_UP -> sendRawKey(KeyEvent.KEYCODE_PAGE_UP, modifiers.toMetaState())
+            KeyType.PAGE_DOWN -> sendRawKey(KeyEvent.KEYCODE_PAGE_DOWN, modifiers.toMetaState())
+            KeyType.INSERT -> sendRawKey(KeyEvent.KEYCODE_INSERT, modifiers.toMetaState())
+            KeyType.FN -> if (key.keyCode != 0) {
+                sendRawKey(key.keyCode, modifiers.toMetaState())
+            }
+            else -> Unit
+        }
+    }
+
+    /** Sends one raw sequence immediately or queues it briefly until a connection is ready. */
+    private fun sendRawKey(keyCode: Int, metaState: Int) {
+        val inputConnection = currentInputConnection
+        val nowMs = SystemClock.uptimeMillis()
+        val targetPackage = currentRawTargetPackage()
+        if (rawKeyRetryQueue.hasPending(targetPackage, nowMs)) {
+            enqueueRawKey(keyCode, metaState)
+            return
+        }
+        if (inputConnection == null) {
+            enqueueRawKey(keyCode, metaState)
+            return
+        }
+        val result = rawKeyDispatcher.send(inputConnection, keyCode, metaState)
+        if (result.acceptedCount == 0) {
+            enqueueRawKey(keyCode, metaState)
+        }
+    }
+
+    /** Adds one undispatched logical key to the bounded retry queue. */
+    private fun enqueueRawKey(
+        keyCode: Int,
+        metaState: Int,
+    ) {
+        rawKeyRetryQueue.enqueue(
+            QueuedRawKey(
+                keyCode = keyCode,
+                metaState = metaState,
+                targetPackage = currentRawTargetPackage(),
+                enqueuedAtMs = SystemClock.uptimeMillis(),
+            ),
+        )
+        postRawQueueDrain(RAW_RETRY_INTERVAL_MS)
+    }
+
+    /** Posts one coalesced queue-drain attempt on the IME main thread. */
+    private fun postRawQueueDrain(delayMs: Long = 0L) {
+        val requestedAtMs = SystemClock.uptimeMillis() + delayMs
+        val scheduledAtMs = rawDrainScheduledAtMs
+        if (scheduledAtMs != null && scheduledAtMs <= requestedAtMs) return
+        rawRetryHandler.removeCallbacks(rawDrainRunnable)
+        rawDrainScheduledAtMs = requestedAtMs
+        rawRetryHandler.postDelayed(rawDrainRunnable, delayMs)
+    }
+
+    /**
+     * Retries queued logical keys once against the latest connection.
+     *
+     * A retry is removed before dispatch and never re-enqueued, including on partial failure, so
+     * accepted characters cannot be duplicated. Missing connections are polled only until TTL.
+     */
+    private fun drainRawKeyQueue() {
+        val nowMs = SystemClock.uptimeMillis()
+        val targetPackage = currentRawTargetPackage()
+        while (rawKeyRetryQueue.hasPending(targetPackage, nowMs)) {
+            val inputConnection = currentInputConnection ?: break
+            val queued = rawKeyRetryQueue.poll(targetPackage, nowMs) ?: break
+            rawKeyDispatcher.send(
+                inputConnection = inputConnection,
+                keyCode = queued.keyCode,
+                metaState = queued.metaState,
+            )
+        }
+        if (rawKeyRetryQueue.hasPending(targetPackage, SystemClock.uptimeMillis())) {
+            postRawQueueDrain(RAW_RETRY_INTERVAL_MS)
+        }
+    }
+
+    /** Drops all queued raw input and cancels pending retry callbacks. */
+    private fun clearRawKeyQueue() {
+        rawRetryHandler.removeCallbacks(rawDrainRunnable)
+        rawDrainScheduledAtMs = null
+        rawKeyRetryQueue.clear()
+    }
+
+    /** Returns editor identity only after the framework confirms the current input has started. */
+    private fun currentRawTargetPackage(): String? =
+        if (currentInputStarted) currentInputEditorInfo?.packageName else null
+
     override fun onKey(key: Key, modifiers: ModifierState) {
+        if (isRawRemoteMode()) {
+            dispatchRawKey(key, modifiers)
+            return
+        }
         if (currentInputConnection == null) return
         if (key.type == KeyType.BACKSPACE) {
             sendKey(KeyEvent.KEYCODE_DEL, modifiers)
@@ -850,6 +1036,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         super.onUpdateSelection(
             oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd
         )
+        if (isRawRemoteMode()) return
         val jumped = newSelStart == newSelEnd &&
             kotlin.math.abs(newSelEnd - oldSelEnd) > 1
         if (!jumped) return
@@ -1102,6 +1289,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     /** Trackpad cursor motion — no modifier semantics. */
     override fun onCursorMove(dx: Int, dy: Int) {
+        if (isRawRemoteMode()) return
         moveCursor(dx, dy, null)
         // The cursor left the word we were watching; blank the strip and
         // let the next keypress recompute it (avoids an IPC per step).
@@ -1188,7 +1376,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     /** Multi-codepoint commits (emoji, etc.) that don't fit through a single
      *  KeyEvent. Goes through commitText directly. */
     override fun onText(text: String) {
-        if (text.isEmpty()) return
+        if (text.isEmpty() || isRawRemoteMode()) return
         currentInputConnection?.commitText(text, 1)
         pendingInsist = null
         lastEventWasTyping = false
@@ -1199,6 +1387,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
      *  candidate and move on with a trailing space. Every tap is also a
      *  labelled example "typed -> meant" for the personal typo model. */
     override fun onSuggestionPicked(word: String) {
+        if (isRawRemoteMode()) return
         val ic = currentInputConnection ?: return
         // Revert chip: restore what the user actually typed, veto and
         // learn it — same semantics as the retype-to-keep flow.

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import androidx.preference.PreferenceManager
+import com.pckeyboard.ime.dispatch.DispatchMode
 
 /**
  * User-tunable layout sizing: height scale (so the keyboard can grow / shrink
@@ -121,8 +122,8 @@ class KeyboardPrefs(context: Context) {
      * Which action the slot immediately to the right of Space performs.
      * Currently supported: "symbols" (default — flips into the 123 page),
      * "emoji" (opens the emoji picker directly), "alt" (a second sticky
-     * Alt/AltGr modifier for the right thumb). The key renders the
-     * matching label ("123", "😀" or "Alt") so the user sees what
+     * Alt/AltGr modifier for the right thumb), or "meta" (Command for remote
+     * macOS shortcuts). The key renders the matching label so the user sees what
      * tapping it will do. Long-pressing the key opens a chooser popup.
      */
     var rightOfSpaceAction: String
@@ -171,6 +172,13 @@ class KeyboardPrefs(context: Context) {
         get() = prefs.getFloat(KEY_TRACKPAD_SENS, 1.0f).coerceIn(0.3f, 3.0f)
         set(value) {
             prefs.edit().putFloat(KEY_TRACKPAD_SENS, value.coerceIn(0.3f, 3.0f)).apply()
+        }
+
+    /** Controls whether the IME uses Android editor APIs or raw remote key events. */
+    var dispatchMode: DispatchMode
+        get() = DispatchMode.fromPreference(prefs.getString(KEY_DISPATCH_MODE, null))
+        set(value) {
+            prefs.edit().putString(KEY_DISPATCH_MODE, value.preferenceValue).apply()
         }
 
     /**
@@ -232,12 +240,14 @@ class KeyboardPrefs(context: Context) {
         private const val KEY_SIDE_SPLIT = "kb_side_split_enabled"
         private const val KEY_RIGHT_OF_SPACE = "kb_right_of_space_action"
         private const val KEY_TRACKPAD_SENS = "kb_trackpad_sensitivity"
+        private const val KEY_DISPATCH_MODE = "kb_dispatch_mode"
         /** Weight of the big empty centre when sideSplit is on. */
         const val SIDE_SPLIT_GAP_WEIGHT = 5f
 
         const val RIGHT_OF_SPACE_SYMBOLS = "symbols"
         const val RIGHT_OF_SPACE_EMOJI = "emoji"
         const val RIGHT_OF_SPACE_ALT = "alt"
+        const val RIGHT_OF_SPACE_META = "meta"
 
         private const val KEY_AUTOCORRECT = "kb_autocorrect_mode"
         const val AUTOCORRECT_OFF = "off"

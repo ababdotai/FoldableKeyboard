@@ -16,6 +16,10 @@
     <string name="setup_status_enabled_no">Status: not enabled yet</string>
 
     <string name="settings_title">Settings</string>
+    <string name="settings_input_mode">Input mode</string>
+    <string name="settings_input_mode_hint">Normal uses Android text editing. Remote Desktop sends hardware-like key events for remote operating systems.</string>
+    <string name="settings_input_mode_normal">Normal Android</string>
+    <string name="settings_input_mode_raw">Remote Desktop / Raw Keyboard</string>
     <string name="settings_new_theme">New theme</string>
     <string name="settings_section_size">Size &amp; layout</string>
     <string name="settings_section_themes">Themes</string>
@@ -34,6 +38,7 @@
     <string name="settings_right_of_space_symbols">123 Symbols</string>
     <string name="settings_right_of_space_emoji">😀 Emoji</string>
     <string name="settings_right_of_space_alt">⌥ Alt</string>
+    <string name="settings_right_of_space_meta">⌘ Meta</string>
     <string name="settings_autocorrect">Autocorrect</string>
     <string name="settings_autocorrect_hint">Suggest shows word candidates above the keys without ever changing your text. Auto also fixes obvious typos at word boundaries — retype a corrected word to keep your spelling and teach it permanently.</string>
     <string name="settings_autocorrect_off">Off</string>

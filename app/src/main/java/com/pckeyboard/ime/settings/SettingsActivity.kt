@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.pckeyboard.ime.BuildConfig
 import com.pckeyboard.ime.R
 import com.pckeyboard.ime.databinding.ActivitySettingsBinding
+import com.pckeyboard.ime.dispatch.DispatchMode
 import com.pckeyboard.ime.editor.ThemeEditorActivity
 import com.pckeyboard.ime.theme.KeyboardTheme
 import com.pckeyboard.ime.theme.ThemeRepository
@@ -88,6 +89,7 @@ class SettingsActivity : AppCompatActivity() {
 
         wireAutoUpdate()
 
+        wireDispatchMode()
         wireSizingControls()
         buildLanguageList()
         // Silent background auto-check too — same throttle as SetupActivity.
@@ -161,6 +163,25 @@ class SettingsActivity : AppCompatActivity() {
             if (hours != prefs.autoUpdateIntervalHours) {
                 prefs.autoUpdateIntervalHours = hours
                 UpdateScheduler.schedule(this, replace = true)
+            }
+        }
+    }
+
+    /** Initializes and persists the Android-versus-raw input dispatch selector. */
+    private fun wireDispatchMode() {
+        binding.dispatchModeGroup.check(
+            if (prefs.dispatchMode == DispatchMode.RAW_REMOTE) {
+                R.id.dispatchRaw
+            } else {
+                R.id.dispatchNormal
+            },
+        )
+        binding.dispatchModeGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            prefs.dispatchMode = if (checkedId == R.id.dispatchRaw) {
+                DispatchMode.RAW_REMOTE
+            } else {
+                DispatchMode.NORMAL
             }
         }
     }
@@ -255,10 +276,11 @@ class SettingsActivity : AppCompatActivity() {
             binding.trackpadSensValue.text = formatSensitivity(v)
         })
 
-        // Right-of-Space slot: "123" (symbols), "😀" (emoji) or "Alt".
+        // Right-of-Space slot: "123" (symbols), "😀" (emoji), Alt or Meta.
         val checkedId = when (prefs.rightOfSpaceAction) {
             KeyboardPrefs.RIGHT_OF_SPACE_EMOJI -> R.id.rightOfSpaceEmoji
             KeyboardPrefs.RIGHT_OF_SPACE_ALT -> R.id.rightOfSpaceAlt
+            KeyboardPrefs.RIGHT_OF_SPACE_META -> R.id.rightOfSpaceMeta
             else -> R.id.rightOfSpaceSymbols
         }
         binding.rightOfSpaceGroup.check(checkedId)
@@ -267,6 +289,7 @@ class SettingsActivity : AppCompatActivity() {
             prefs.rightOfSpaceAction = when (id) {
                 R.id.rightOfSpaceEmoji -> KeyboardPrefs.RIGHT_OF_SPACE_EMOJI
                 R.id.rightOfSpaceAlt -> KeyboardPrefs.RIGHT_OF_SPACE_ALT
+                R.id.rightOfSpaceMeta -> KeyboardPrefs.RIGHT_OF_SPACE_META
                 else -> KeyboardPrefs.RIGHT_OF_SPACE_SYMBOLS
             }
         }
