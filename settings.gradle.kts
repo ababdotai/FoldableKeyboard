@@ -25,5 +25,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "pcKeyboard"
+rootProject.name = "FoldableKeyboard"
 include(":app")

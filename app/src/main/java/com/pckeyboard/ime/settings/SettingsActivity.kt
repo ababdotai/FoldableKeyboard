@@ -29,6 +29,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var prefs: KeyboardPrefs
     private lateinit var adapter: ThemeAdapter
     private var uuKeyboardSetup: UuKeyboardSetupController? = null
+    private var stopObservingTheme: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -45,8 +46,7 @@ class SettingsActivity : AppCompatActivity() {
         adapter = ThemeAdapter(
             onSelect = {
                 repo.selectTheme(it.id)
-                adapter.selectedId = it.id
-                adapter.notifyDataSetChanged()
+                reload()
             },
             onEdit = { editTheme(it) },
             onDelete = {
@@ -57,6 +57,11 @@ class SettingsActivity : AppCompatActivity() {
         )
         binding.themeList.layoutManager = LinearLayoutManager(this)
         binding.themeList.adapter = adapter
+        binding.followSystemTheme.isChecked = repo.followSystemTheme
+        binding.followSystemTheme.setOnCheckedChangeListener { _, checked ->
+            if (repo.followSystemTheme != checked) repo.followSystemTheme = checked
+        }
+        stopObservingTheme = repo.observeSelectedTheme { reload() }
 
         binding.btnNewTheme.setOnClickListener {
             startActivity(Intent(this, ThemeEditorActivity::class.java))
@@ -247,6 +252,8 @@ class SettingsActivity : AppCompatActivity() {
 
     /** Removes optional Shizuku listeners with the settings screen. */
     override fun onDestroy() {
+        stopObservingTheme?.invoke()
+        stopObservingTheme = null
         uuKeyboardSetup?.close()
         uuKeyboardSetup = null
         super.onDestroy()
@@ -256,9 +263,11 @@ class SettingsActivity : AppCompatActivity() {
         finish(); return true
     }
 
+    /** Synchronizes the effective palette and automatic toggle after any explicit theme selection. */
     private fun reload() {
-        adapter.submit(repo.allThemes())
+        binding.followSystemTheme.isChecked = repo.followSystemTheme
         adapter.selectedId = repo.getSelectedTheme().id
+        adapter.submit(repo.allThemes())
     }
 
     private fun editTheme(t: KeyboardTheme) {

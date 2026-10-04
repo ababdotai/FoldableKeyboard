@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">pcKeyboard</string>
+    <string name="app_name">FoldableKeyboard</string>
     <string name="subtype_en_us">英语（美国）</string>
     <string name="subtype_hu_hu">匈牙利语</string>
     <string name="subtype_de_de">德语</string>
     <string name="subtype_es_es">西班牙语</string>
 
     <string name="setup_subtitle">为折叠屏和手机设计的电脑式键盘，包含 Ctrl、Alt 和功能键。</string>
-    <string name="setup_step_enable">1. 启用 pcKeyboard 输入法</string>
-    <string name="setup_step_select">2. 选择 pcKeyboard 输入法</string>
+    <string name="setup_step_enable">1. 启用 FoldableKeyboard 输入法</string>
+    <string name="setup_step_select">2. 选择 FoldableKeyboard 输入法</string>
     <string name="setup_btn_enable">打开系统输入法设置</string>
     <string name="setup_btn_select">切换输入法</string>
     <string name="setup_btn_settings">打开键盘设置</string>
@@ -27,6 +27,8 @@
     <string name="theme_magic_light">Magic Keyboard · 银白</string>
     <string name="theme_magic_dark">Magic Keyboard · 黑色</string>
     <string name="theme_amoled">纯黑 · AMOLED</string>
+    <string name="theme_follow_system">跟随系统明暗</string>
+    <string name="theme_follow_system_hint">浅色使用银白键盘，深色使用黑色键盘。默认关闭；关闭后恢复手动主题，手动选择主题会退出跟随。支持普通输入法和 UU 浮窗；终端会话配色优先。</string>
     <string name="settings_input_mode">普通输入法 · 输入方式</string>
     <string name="settings_input_mode_hint">仅影响通过系统输入法切换器打开的键盘，与 UU 悬浮键盘独立。普通模式输入文字；RAW 向支持的远程应用发送按键事件，不能代替 UU 悬浮键盘触发远端拼音。</string>
     <string name="settings_input_mode_normal">普通文字</string>
@@ -35,7 +37,7 @@
     <string name="uu_keyboard_command_compatibility">Mac ⌘ 兼容模式（右 Ctrl）</string>
     <string name="uu_keyboard_command_compatibility_hint">仅 Mac 悬浮键盘：将 ⌘ 转为右 Ctrl。请在 UU「按键替代」开启「右 Ctrl = Cmd」，关闭「右 Alt = Esc」以使用右 ⌥；Android 无障碍中的「全键盘控制 / UU 远程键盘外设」需关闭。关闭本项会直接发送 Meta，组合键可能被 Android 拦截。</string>
     <string name="uu_keyboard_hint">通过 Shizuku 模拟物理键盘，支持远端拼音和组合键。需要 Android 14+、系统 UHID 支持及以下权限；无需切换普通输入法的 RAW 模式。</string>
-    <string name="uu_keyboard_usage">使用步骤：启动悬浮键盘 → 在 UU 选择「电脑键盘」并关闭「输入法」面板 → 点中远端输入框。Mac 需切到拼音输入源。\n可拖动、折叠键盘，通过浮动按钮或通知恢复；悬浮窗不会自动触发远端画面避让。输入时不要切换应用，系统焦点变化仍可能影响投递。</string>
+    <string name="uu_keyboard_usage">使用步骤：启动悬浮键盘 → 在 UU 选择「电脑键盘」并关闭「输入法」面板 → 点中远端输入框。Mac 需切到拼音输入源。\n可拖动、折叠键盘，通过浮动按钮或通知恢复。希望避免遮挡时，保持 UU「电脑键盘」展开，横滑浮窗操作栏点击「停靠」，拖动顶部与 UU 键盘上沿对齐；横竖屏分别校准。停靠不自动触发画面避让。输入时不要切换应用，系统焦点变化仍可能影响投递。</string>
     <string name="uu_keyboard_options">快捷键与操作栏</string>
     <string name="uu_keyboard_overlay_permission">1. 允许悬浮窗</string>
     <string name="uu_keyboard_authorize">2. 授予 Shizuku 权限</string>
@@ -53,11 +55,18 @@
     <string name="uu_overlay_status">%1$s\n%2$s</string>
     <string name="uu_overlay_expand">展开</string>
     <string name="uu_overlay_drag">拖动</string>
+    <string name="uu_overlay_dock">停靠</string>
+    <string name="uu_overlay_float">浮动</string>
+    <string name="uu_overlay_dock_grow">增高</string>
+    <string name="uu_overlay_dock_shrink">降低</string>
+    <string name="uu_overlay_dock_resize">↕ 拖动此处对齐 UU 键盘上沿</string>
+    <string name="uu_overlay_dock_small">↕ 高度较小，请增高或切回浮动</string>
+    <string name="uu_overlay_dock_hint">先展开 UU「电脑键盘」，再拖动顶部校准条与 UU 键盘上沿对齐。停靠不会自动避让；横竖屏分别记忆高度。区域较小时自动隐藏快捷栏。</string>
     <string name="uu_overlay_restore">键盘</string>
-    <string name="uu_ime_entry_hint">UU 的输入法入口不能触发远端拼音。请切换 UU“电脑键盘”，从 pcKeyboard 浮动按钮或常驻通知恢复 HID 键盘；首次需在设置启动。</string>
+    <string name="uu_ime_entry_hint">UU 的输入法入口不能触发远端拼音。请切换 UU“电脑键盘”，从 FoldableKeyboard 浮动按钮或常驻通知恢复 HID 键盘；首次需在设置启动。</string>
     <string name="uu_overlay_collapse">折叠</string>
     <string name="uu_overlay_close">关闭</string>
-    <string name="uu_overlay_channel">UU 浮动键盘</string>
+    <string name="uu_overlay_channel">FoldableKeyboard · UU 浮动键盘</string>
     <string name="uu_overlay_notification">HID 跟随系统焦点；输入时勿切换应用。点击停止关闭设备。</string>
     <string name="uu_overlay_stop">停止</string>
     <string name="uu_overlay_unavailable">需要 Android 14 或更新版本、已安装 UU、允许悬浮窗且手机已解锁。</string>

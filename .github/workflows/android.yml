@@ -83,13 +83,13 @@ jobs:
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk \
-             dist/pckeyboard-${{ steps.tag.outputs.tag }}.apk
-          echo "apk_path=dist/pckeyboard-${{ steps.tag.outputs.tag }}.apk" >> "$GITHUB_OUTPUT"
+             dist/FoldableKeyboard-${{ steps.tag.outputs.tag }}.apk
+          echo "apk_path=dist/FoldableKeyboard-${{ steps.tag.outputs.tag }}.apk" >> "$GITHUB_OUTPUT"
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pckeyboard-debug
+          name: FoldableKeyboard-debug
           path: ${{ steps.rename.outputs.apk_path }}
           if-no-files-found: error
 

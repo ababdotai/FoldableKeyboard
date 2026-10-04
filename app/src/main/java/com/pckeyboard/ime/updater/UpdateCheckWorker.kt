@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.collect
  * When a newer release is found the APK is streamed into the app's own
  * cache via [UpdateDownloader]; on completion the worker fires the
  * system installer through a FileProvider URI so the user just sees the
- * standard "Update pcKeyboard?" prompt.
+ * standard "Update FoldableKeyboard?" prompt.
  */
 class UpdateCheckWorker(
     context: Context,

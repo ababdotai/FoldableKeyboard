@@ -140,6 +140,7 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     fun bind(layout: KeyboardLayout, theme: KeyboardTheme) {
+        updateAuxiliaryTheme(theme)
         this.layoutData = layout
         this.theme = theme
         // KeyboardView stays transparent so [popupZone] reveals the app
@@ -186,6 +187,7 @@ class KeyboardView @JvmOverloads constructor(
 
     /** Recolors keycaps and chassis while keeping the popup reservation transparent. */
     fun updateTheme(theme: KeyboardTheme) {
+        updateAuxiliaryTheme(theme)
         this.theme = theme
         applyKeyboardSurface(theme)
         applyKeyboardBezel(theme)
@@ -194,6 +196,17 @@ class KeyboardView @JvmOverloads constructor(
             kv.invalidate()
         }
         requestLayout()
+    }
+
+    /** Preserves candidate words and dismisses temporary surfaces whose palettes are immutable. */
+    private fun updateAuxiliaryTheme(theme: KeyboardTheme) {
+        if (this.theme == theme) return
+        cancelInteractionsForShortcut()
+        hideEmojiPicker()
+        hideEmojiSearchHeader()
+        hideClipboard()
+        hideVoiceInput()
+        suggestionBar?.updateTheme(theme)
     }
 
     /** Draws a quiet silver chassis only underneath keys, never over the app-visible popup area. */

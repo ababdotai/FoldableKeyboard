@@ -48,7 +48,7 @@ class UpdateChecker(private val context: Context) {
             val conn = (URL(RELEASES_URL).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/vnd.github+json")
-                setRequestProperty("User-Agent", "pcKeyboard")
+                setRequestProperty("User-Agent", "FoldableKeyboard")
                 connectTimeout = 5_000
                 readTimeout = 10_000
             }

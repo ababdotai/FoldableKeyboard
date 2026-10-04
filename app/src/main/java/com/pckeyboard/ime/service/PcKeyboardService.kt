@@ -72,6 +72,7 @@ fun languageCode(id: String): String = when (id) {
 class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     private lateinit var themeRepo: ThemeRepository
+    private var stopObservingTheme: (() -> Unit)? = null
     private lateinit var kbPrefs: KeyboardPrefs
     private var currentLayoutId: String = "en_US"
     private var currentMode: LayoutMode = LayoutMode.MAIN
@@ -147,8 +148,19 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     // user's persisted theme. Null = no terminal colours, use the saved theme.
     private var sessionTheme: KeyboardTheme? = null
 
-    /** Theme to render with: the terminal-derived one if present, else the saved theme. */
+    /** Gives intentional terminal session colors priority over automatic or manual appearance. */
     private fun activeTheme(): KeyboardTheme = sessionTheme ?: themeRepo.getSelectedTheme()
+
+    /** Rebuilds themed surfaces while preserving the terminal override and ordinary editor state. */
+    private fun refreshAppearance() {
+        val view = keyboardView ?: return
+        if (sessionTheme != null) {
+            sessionTheme = TerminalThemeBridge.fromExtras(currentInputEditorInfo?.extras, themeRepo.getSelectedTheme())
+                ?: sessionTheme
+        }
+        view.cancelInteractionsForShortcut()
+        bindCurrentLayout()
+    }
 
     private val clipListener = ClipboardManager.OnPrimaryClipChangedListener {
         val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return@OnPrimaryClipChangedListener
@@ -167,6 +179,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         kbPrefs = KeyboardPrefs(this)
         observedDispatchMode = kbPrefs.dispatchMode
         currentLayoutId = kbPrefs.currentLanguage
+        stopObservingTheme = themeRepo.observeSelectedTheme { refreshAppearance() }
         // WorkManager initialises through credential-encrypted storage,
         // which is unreachable during Direct Boot (the window between
         // device boot and the first user unlock when the IME also has
@@ -184,6 +197,8 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onDestroy() {
+        stopObservingTheme?.invoke()
+        stopObservingTheme = null
         clearRawKeyQueue()
         (getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager)
             ?.removePrimaryClipChangedListener(clipListener)
@@ -442,7 +457,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        bindCurrentLayout()
+        refreshAppearance()
     }
 
     /**

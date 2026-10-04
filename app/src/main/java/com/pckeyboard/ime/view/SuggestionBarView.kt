@@ -20,9 +20,11 @@ import com.pckeyboard.ime.theme.KeyboardTheme
  */
 class SuggestionBarView(
     context: Context,
-    private val theme: KeyboardTheme,
+    private var theme: KeyboardTheme,
     private val onPick: (String) -> Unit
 ) : HorizontalScrollView(context) {
+
+    private var currentWords: List<String> = emptyList()
 
     private val row = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -35,13 +37,25 @@ class SuggestionBarView(
         addView(row, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
     }
 
+    /** Updates candidate chips without retaining mutable lists from the suggestion engine. */
     fun setSuggestions(words: List<String>) {
+        currentWords = words.toList()
         row.removeAllViews()
         for ((i, word) in words.withIndex()) {
             if (i > 0) row.addView(makeDivider())
             row.addView(makeChip(word, best = i == 0))
         }
         scrollTo(0, 0)
+    }
+
+    /** Recolors the mounted strip while preserving candidates and the current scroll position. */
+    fun updateTheme(theme: KeyboardTheme) {
+        if (this.theme == theme) return
+        val previousScroll = scrollX
+        this.theme = theme
+        setBackgroundColor(theme.backgroundColor)
+        setSuggestions(currentWords)
+        scrollTo(previousScroll, 0)
     }
 
     private fun makeChip(word: String, best: Boolean): TextView =

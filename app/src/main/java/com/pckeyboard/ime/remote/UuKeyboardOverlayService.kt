@@ -27,6 +27,7 @@ import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -59,6 +60,13 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
     private var stopObservingPreferences: (() -> Unit)? = null
     private var stopObservingTheme: (() -> Unit)? = null
     private var header: LinearLayout? = null
+    private var headerScroll: HorizontalScrollView? = null
+    private var calibrationBar: LinearLayout? = null
+    private var calibrationHint: TextView? = null
+    private var dockButton: Button? = null
+    private var dragButton: Button? = null
+    private var docked = false
+    private var floatingPosition: Pair<Int, Int>? = null
     private var title: TextView? = null
     private var collapseButton: Button? = null
     private var restoreButton: Button? = null
@@ -157,26 +165,38 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
     /** Creates a bottom-aligned touch surface without taking focus from UU's desktop view. */
     @SuppressLint("RtlHardcoded") // Drag coordinates are physical screen coordinates, not text direction.
     private fun showPanel() {
+        docked = prefs.uuOverlayDocked
         val theme = ThemeRepository(this).getSelectedTheme()
-        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            clipChildren = true
+            clipToPadding = true
+        }
+        calibrationBar = createCalibrationBar()
+        container.addView(calibrationBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
         val header = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(theme.modifierKeyColor)
         }
         this.header = header
-        header.addView(Button(this).apply {
+        dragButton = Button(this).apply {
             setText(R.string.uu_overlay_drag)
             contentDescription = getString(R.string.uu_overlay_drag)
             installDragHandle(this)
-        })
+        }
+        header.addView(dragButton)
+        dockButton = Button(this).apply {
+            setOnClickListener { setDocked(!docked) }
+        }
+        header.addView(dockButton)
         title = TextView(this).apply {
             text = getString(R.string.uu_overlay_title)
             setTextColor(theme.modifierTextColor)
             textSize = 12f
-            maxLines = 3
+            maxLines = 2
             setPadding(dp(8), dp(4), dp(4), dp(4))
         }
-        header.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(title, LinearLayout.LayoutParams(dp(180), ViewGroup.LayoutParams.WRAP_CONTENT))
         header.addView(Button(this).apply {
             setText(R.string.uu_diagnostics_toggle)
             setOnClickListener {
@@ -189,6 +209,9 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
                     } else {
                         view.stopUpdating()
                     }
+                    bridge?.cancelPending()
+                    keyboard?.cancelInteractionsForShortcut()
+                    updateDockContent()
                     panel?.post { updatePanelPosition() }
                 }
             }
@@ -204,7 +227,12 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
             setText(R.string.uu_overlay_close)
             setOnClickListener { stopOverlay() }
         })
-        container.addView(header)
+        headerScroll = HorizontalScrollView(this).apply {
+            isFocusable = false
+            isHorizontalScrollBarEnabled = true
+            addView(header, ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }
+        container.addView(headerScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
         restoreButton = Button(this).apply {
             setText(R.string.uu_overlay_restore)
             contentDescription = getString(R.string.uu_overlay_expand)
@@ -257,13 +285,14 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
             val params = windowParams ?: return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    handle.parent?.requestDisallowInterceptTouchEvent(true)
                     initialX = event.rawX
                     initialY = event.rawY
                     initialLeft = params.x
                     initialTop = params.y
                     dragging = false
                     bridge?.cancelPending()
-                    keyboard?.resetModifiers()
+                    keyboard?.cancelInteractionsForShortcut()
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - initialX
@@ -276,10 +305,133 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
                         updatePanelPosition()
                     }
                 }
-                MotionEvent.ACTION_UP -> if (clickable && !dragging) handle.performClick()
+                MotionEvent.ACTION_UP -> {
+                    handle.parent?.requestDisallowInterceptTouchEvent(false)
+                    if (clickable && !dragging) handle.performClick()
+                    dragging = false
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    handle.parent?.requestDisallowInterceptTouchEvent(false)
+                    dragging = false
+                }
             }
             true
         }
+    }
+
+    /** Creates a visible top boundary that can be dragged or adjusted without taking UU focus. */
+    private fun createCalibrationBar(): LinearLayout = LinearLayout(this).apply {
+        gravity = Gravity.CENTER_VERTICAL
+        calibrationHint = TextView(this@UuKeyboardOverlayService).apply {
+            setText(R.string.uu_overlay_dock_resize)
+            textSize = 11f
+            gravity = Gravity.CENTER
+            maxLines = 2
+            installResizeHandle(this)
+            setOnClickListener {
+                Toast.makeText(this@UuKeyboardOverlayService, R.string.uu_overlay_dock_hint, Toast.LENGTH_LONG).show()
+            }
+        }
+        addView(calibrationHint, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        listOf(R.string.uu_overlay_dock_shrink to -1, R.string.uu_overlay_dock_grow to 1).forEach { (label, direction) ->
+            addView(Button(this@UuKeyboardOverlayService).apply {
+                setText(label)
+                textSize = 11f
+                minWidth = 0
+                minimumWidth = 0
+                setPadding(0, 0, 0, 0)
+                setOnClickListener { resizeDock((windowParams?.height ?: 0) + direction * dp(12)) }
+            }, LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.MATCH_PARENT))
+        }
+    }
+
+    /** Adjusts only the dock height; the lower edge always remains attached to the display. */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun installResizeHandle(handle: View) {
+        var initialY = 0f
+        var initialHeight = 0
+        var dragging = false
+        val slop = ViewConfiguration.get(this).scaledTouchSlop
+        handle.setOnTouchListener { _, event ->
+            if (!docked || collapsed) return@setOnTouchListener false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    initialY = event.rawY
+                    initialHeight = windowParams?.height ?: 0
+                    dragging = false
+                    bridge?.cancelPending()
+                    keyboard?.cancelInteractionsForShortcut()
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val delta = initialY - event.rawY
+                    if (kotlin.math.abs(delta) > slop) dragging = true
+                    if (dragging) resizeDock(initialHeight + delta.toInt())
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!dragging) handle.performClick()
+                    dragging = false
+                }
+                MotionEvent.ACTION_CANCEL -> dragging = false
+            }
+            true
+        }
+    }
+
+    /** Switches presentation modes without rebuilding or reconnecting the HID transport. */
+    private fun setDocked(value: Boolean) {
+        if (docked == value) return
+        if (value) floatingPosition = windowParams?.let { it.x to it.y }
+        docked = value
+        prefs.uuOverlayDocked = value
+        dockOnNextLayout = !value && floatingPosition == null
+        if (!value) floatingPosition?.let { (x, y) -> windowParams?.apply { this.x = x; this.y = y } }
+        diagnostics?.stopUpdating()
+        diagnostics?.visibility = View.GONE
+        rebuildKeyboard()
+        if (value) Toast.makeText(this, R.string.uu_overlay_dock_hint, Toast.LENGTH_LONG).show()
+    }
+
+    /** Saves bounded calibration separately for portrait and landscape before resizing in place. */
+    private fun resizeDock(height: Int) {
+        if (!docked || collapsed) return
+        bridge?.cancelPending()
+        keyboard?.cancelInteractionsForShortcut()
+        val bounds = usableBounds()
+        prefs.setUuDockHeightRatio(bounds.width() > bounds.height(),
+            UuOverlayGeometry.dockedRatio(bounds.height(), height, dp(120)))
+        updateDockContent()
+        updatePanelPosition()
+    }
+
+    /** Fits every visible child inside the calibrated region, replacing keys with diagnostics. */
+    private fun updateDockContent() {
+        val bounded = docked && !collapsed
+        calibrationBar?.visibility = if (bounded) View.VISIBLE else View.GONE
+        headerScroll?.visibility = if (collapsed) View.GONE else View.VISIBLE
+        dragButton?.visibility = if (docked) View.GONE else View.VISIBLE
+        dockButton?.setText(if (docked) R.string.uu_overlay_float else R.string.uu_overlay_dock)
+        val showingDiagnostics = diagnostics?.visibility == View.VISIBLE
+        val bounds = usableBounds()
+        val height = UuOverlayGeometry.dockedHeight(bounds.height(),
+            prefs.uuDockHeightRatio(bounds.width() > bounds.height()), dp(120))
+        calibrationHint?.setText(if (height < dp(200)) R.string.uu_overlay_dock_small else R.string.uu_overlay_dock_resize)
+        calibrationBar?.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            minOf(dp(36), (height * 0.18f).toInt().coerceAtLeast(1)))
+        headerScroll?.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            if (bounded) minOf(dp(48), (height * 0.24f).toInt().coerceAtLeast(1)) else dp(48))
+        windowParams?.apply {
+            width = when { collapsed -> dp(56); docked -> bounds.width()
+                else -> UuOverlayGeometry.expandedWidth(bounds.width(), dp(360)) }
+            this.height = if (bounded) height else ViewGroup.LayoutParams.WRAP_CONTENT
+        }
+        diagnostics?.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            if (bounded) 0 else diagnosticPanelHeight(), if (bounded) 1f else 0f)
+        keyboard?.apply {
+            visibility = if (bounded && showingDiagnostics) View.GONE else View.VISIBLE
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                if (bounded) 0 else ViewGroup.LayoutParams.WRAP_CONTENT, if (bounded) 1f else 0f)
+        }
+        shortcutBar?.visibility = if (bounded && (showingDiagnostics || height < dp(280))) View.GONE else View.VISIBLE
     }
 
     /** Hides all input surfaces behind a compact movable restore button. */
@@ -297,14 +449,13 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
         val theme = ThemeRepository(this).getSelectedTheme()
         header?.visibility = if (collapsed) View.GONE else View.VISIBLE
         restoreButton?.visibility = if (collapsed) View.VISIBLE else View.GONE
-        windowParams?.width = if (collapsed) dp(56) else
-            UuOverlayGeometry.expandedWidth(usableBounds().width(), dp(360))
         applyPanelTheme(theme)
         keyboard?.apply { listener = null; resetModifiers(); panel?.removeView(this) }
         keyboard = null
         shortcutBar?.let { it.dispose(); panel?.removeView(it) }
         shortcutBar = null
         if (collapsed) {
+            updateDockContent()
             panel?.post { updatePanelPosition() }
             return
         }
@@ -331,6 +482,7 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
         panel?.addView(keyboard, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
+        updateDockContent()
         panel?.post { updatePanelPosition() }
     }
 
@@ -344,6 +496,15 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
         }
         title?.setTextColor(theme.secondaryTextColor)
         restoreButton?.applyKeyboardChrome(theme)
+        panel?.setBackgroundColor(theme.backgroundColor)
+        calibrationBar?.let { row ->
+            row.setBackgroundColor(theme.modifierKeyColor)
+            for (index in 0 until row.childCount) {
+                val child = row.getChildAt(index)
+                if (child is Button) child.applyKeyboardChrome(theme)
+                else (child as? TextView)?.setTextColor(theme.modifierTextColor)
+            }
+        }
         diagnostics?.applyTheme(theme)
     }
 
@@ -352,13 +513,19 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
         val view = panel?.takeIf { it.isAttachedToWindow } ?: return
         val params = windowParams ?: return
         val bounds = usableBounds()
+        if (docked && !collapsed) {
+            params.x = bounds.left
+            params.y = bounds.bottom - params.height
+            dockOnNextLayout = false
+        }
         if (dockOnNextLayout && !view.isLayoutRequested && view.height > 0) {
             params.x = bounds.left + (bounds.width() - params.width) / 2
             params.y = bounds.bottom - view.height
             dockOnNextLayout = false
         }
         params.x = UuOverlayGeometry.clamp(params.x, bounds.left, bounds.width(), params.width)
-        params.y = UuOverlayGeometry.clamp(params.y, bounds.top, bounds.height(), view.height)
+        params.y = UuOverlayGeometry.clamp(params.y, bounds.top, bounds.height(),
+            if (docked && !collapsed) params.height else view.height)
         try {
             windowManager?.updateViewLayout(view, params)
         } catch (_: RuntimeException) {
@@ -469,15 +636,24 @@ class UuKeyboardOverlayService : Service(), KeyboardView.Listener {
         stopObservingTheme?.invoke()
         stopObservingTheme = null
         header = null
+        headerScroll = null
+        calibrationBar = null
+        calibrationHint = null
+        dockButton = null
+        dragButton = null
         stopObservingPreferences?.invoke()
         stopObservingPreferences = null
         bridge?.close()
         bridge = null
         diagnostics?.stopUpdating()
         diagnostics = null
+
         collapseButton = null
         restoreButton = null
-        keyboard?.apply { listener = null; resetModifiers() }
+        keyboard?.apply {
+            listener = null
+            resetModifiers()
+        }
         panel?.let { view ->
             if (view.isAttachedToWindow) runCatching { windowManager?.removeViewImmediate(view) }
         }

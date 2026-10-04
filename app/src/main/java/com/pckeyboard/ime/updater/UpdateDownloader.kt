@@ -38,7 +38,7 @@ object UpdateDownloader {
     /** Destination file used for this update — overwritten on each fresh
      *  attempt so stale partial downloads can't accumulate in the cache. */
     fun apkFileFor(context: Context, info: UpdateInfo): File =
-        File(context.cacheDir, "update-${info.versionName.sanitiseForFilename()}.apk")
+        File(context.cacheDir, "FoldableKeyboard-${info.versionName.sanitiseForFilename()}.apk")
 
     /**
      * Streams the APK into [apkFileFor]'s destination, emitting Progress
@@ -61,7 +61,7 @@ object UpdateDownloader {
                 instanceFollowRedirects = true
                 connectTimeout = 10_000
                 readTimeout = 30_000
-                setRequestProperty("User-Agent", "pcKeyboard")
+                setRequestProperty("User-Agent", "FoldableKeyboard")
             }
             try {
                 if (conn.responseCode !in 200..299) {

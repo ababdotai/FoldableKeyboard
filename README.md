@@ -1,466 +1,88 @@
-# pcKeyboard
+<div align="center">
+  <img src="public/icons/icon.png" width="128" height="128" alt="FoldableKeyboard icon">
+  <h1>FoldableKeyboard</h1>
+  <p><strong>Virtual keyboard for remote vibe coding.</strong><br>Works best on foldable phones.</p>
+  <p>
+    <a href="#quick-start">Quick start</a> ·
+    <a href="#features">Features</a> ·
+    <a href="#development">Development</a> ·
+    <a href="doc/README.zh-CN.md">简体中文</a>
+  </p>
+</div>
 
-A full PC-style virtual keyboard for Android, built for **foldable devices**
-(Samsung Galaxy Fold, Pixel Fold, …) but equally usable on regular phones.
-Same key set as a desktop keyboard — function row, modifier cluster, arrow
-keys, AltGr — with proper IME integration so apps see real `Ctrl+C`,
-`Alt+Tab`, `Shift+Home`, etc.
+FoldableKeyboard brings desktop-style keys to Android, with a UU Remote overlay for controlling a remote Mac or Windows computer. It combines familiar modifiers and navigation keys with layouts suited to unfolded screens.
 
-```
-Esc F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 Home End
-`   1   2   3   4   5   6   7   8   9   0   -   =   ⌫
-Tab q   w   e   r   t   y   u   i   o   p   [   ]   \
-Caps a   s   d   f   g   h   j   k   l   ;   '   ⏎
-⇧   z   x   c   v   b   n   m   ,   .   /   ▲   ⇧
-Ctrl 🌐 Alt        space      123  ◀ ▼ ▶
-```
+The UU overlay uses a locally registered HID keyboard through Shizuku. Ordinary Android input-method mode remains available, but it is a separate input path: selecting the keyboard in Android's input-method picker does **not** activate the UU HID overlay.
 
-## Highlights
+<a id="quick-start"></a>
+## Quick start
 
-- **Real PC layout** — F-row, Esc, Tab, Caps Lock, Ctrl + Alt + Win as actual
-  modifiers (not toggles to a symbols page), arrow cluster with both ▲ above ▼
-  and ◀ / ▶ flanking. Modifier presses become `KeyEvent` meta flags so
-  shortcuts work everywhere.
-- **Foldable-first** — at ≥ 600 dp the full PC layout shows; on narrow phones
-  the function row is dropped automatically, but can be force-enabled from the
-  globe menu so power users keep their F-keys.
-- **Two-phase touchpad** in Space — slide into the centre indicator to arm,
-  release to enter free touchpad mode with relative cursor deltas, repeat
-  drags any number of times, ✕ to exit.
-- **Full emoji picker** (~1500 emojis across 9 categories + dynamic Recents)
-  with **inline search using the real keyboard** for typing the query.
-- **Clipboard manager** with cards for the last 20 entries — tap commits,
-  long-press edits, ✕ deletes one, "Clear all" wipes the rest with a two-tap
-  confirm.
-- **Per-language AltGr layer** — held Alt commits the locale's xkb glyph
-  (e.g. HU `e` → `€`, `w` → `|`; DE `q` → `@`, `<` → `|`; ES `2` → `@`).
-- **In-app self-update** to the app's own cache directory with a live
-  progress dialog and a FileProvider hand-off to the system installer.
-- **Custom themes** with an ARGB colour picker (sliders + hex display +
-  Default reset) and a live preview against the actual keyboard view.
-- **Offline autocorrect & suggestions** — per-language frequency
-  dictionaries (HU 400k / DE 250k / EN 250k / ES 250k word forms,
-  inflections included, ~5.4 MB total) power a passive suggestion strip
-  with accent restoration (`kerdojel` → `kérdőjel`), typo correction
-  and word completion; an opt-in Auto mode fixes obvious typos at word
-  boundaries (Space, punctuation, Enter, tap-away) — retyping a
-  corrected word keeps it and teaches it permanently. A built-in
-  **Hunspell checker** (the LibreOffice engine, pure-Java Lucene port)
-  validates words morphologically from stems + affix rules, so rare
-  inflections and Hungarian compounds the corpus never saw are
-  recognised as correct and never "fixed". A per-language
-  **learning dictionary** picks up
-  the user's own words: anything typed twice is suggested from then on
-  and shielded from auto-correction. Off / Suggest / Auto in Settings.
+### UU Remote keyboard
 
-## Layout
+Requires **Android 14+**, **Shizuku 13+**, overlay permission, and a ROM that permits the system HID tool and UHID device access. Compatibility is not guaranteed on every phone or UU version.
 
-### Languages
+1. Install an APK from this repository's [Releases](https://github.com/ababdotai/FoldableKeyboard/releases), if available, or build the debug APK below.
+2. Install and start [Shizuku](https://shizuku.rikka.app/guide/setup/). Wireless debugging can start it without root; after a phone reboot, you will generally need to start it again.
+3. Open FoldableKeyboard settings. In the UU keyboard section, grant Shizuku and **Display over other apps** permissions, then start the overlay.
+4. Connect in UU, select **Computer keyboard / 电脑键盘**, close its **Input method / 输入法** panel, and focus the remote editor. Restore our overlay using its floating button or notification.
+5. For remote Chinese composition, select a Pinyin input source **on the Mac**, then type `nihao`. The remote input method—not the Android keyboard—should compose the text.
 
-English (US — ANSI QWERTY), Hungarian (ISO QWERTZ), German (ISO QWERTZ), Spanish
-(ISO QWERTY). Each comes with its xkb AltGr table baked in as `Key.altLabel`
-and the same set is also at the head of the long-press popup, so every
-diacritic / AltGr glyph is reachable two ways — held-Alt for one-shot, long-
-press for browsing.
+For Mac shortcuts, select the **Mac** layout and leave Command compatibility enabled. In UU's key substitutions, enable **Right Ctrl → Cmd**, disable **Right Alt → Esc**, and disable UU's **Full keyboard control** accessibility feature. Actual Control remains separate from Command. See the [Mac shortcut guide](doc/mac-keyboard-shortcuts.md) for version-specific caveats.
 
-The active layout is cycled from the globe long-press menu, restricted to the
-languages the user actually enabled in Settings → Languages. New locales are
-one `*.Layout.kt` file plus a `LayoutPack` entry in `LayoutRegistry` and a
-`<subtype>` in `res/xml/method.xml`.
+### Ordinary Android input method
 
-### Rows
+Enable FoldableKeyboard in Android's input-method settings and select it from the keyboard picker. This route supports normal text entry without Shizuku. RAW mode sends key events through the receiving app's input connection; it does not create an external keyboard and does not solve UU's letter-event filtering in its input-method panel.
 
-- **Function row** (always shown on ≥ 600 dp, optional on narrower screens):
-  `Esc F1–F11 Home End`. Toggle from the globe menu.
-- **Number row**: locale-specific (HU has `0 1-9 ö ü ó`, DE has `^ 1-0 ß '`,
-  ES has `º 1-0 ' ¡`, EN has `` ` `` `1-0 - =`).
-- **Top letter row**: locale-specific, ending with the bracket/backslash set
-  most users need.
-- **Home row**: starts with **Caps Lock** (where Ctrl traditionally lives on
-  consumer PCs), ends with Enter.
-- **Bottom letter row**: ⇧ + letters + ▲ + ⇧, so the up-arrow sits directly
-  above ▼ in the row below for a real inverted-T arrow cluster.
-- **Control row**: `Ctrl 🌐 Alt Space 123 ◀ ▼ ▶`. The slot to the right of
-  Space is **configurable in Settings** — pick `123` (default) or `😀` for
-  one-tap access to the emoji picker.
+<a id="features"></a>
+## Features
 
-Every row totals weight 14, so a "weight 1" letter is exactly the same width
-in any row.
+- **Mac and Windows layouts:** Command, Option, Control, function keys, and navigation keys. Mac mode uses an inverted-T arrow cluster and PageUp/PageDn.
+- **Foldable-friendly sizing:** adjustable height, margins, optional split layout, and a configurable function row.
+- **Remote shortcuts:** a scrollable bar for select all, copy, paste, undo, redo, find, and save. These operate on the remote application's clipboard.
+- **Magic Keyboard-inspired themes:** silver/white and graphite/black, alongside AMOLED and custom themes. Styling does not change key semantics.
+- **Follow system appearance:** enable the switch under keyboard appearance to alternate between silver/white and graphite/black with Android's light/dark mode, for both the IME and UU overlay. It is off by default; turning it off restores your manual theme. Selecting a theme manually exits automatic mode. A cooperating terminal's session-provided palette still takes priority in its own IME session. IME appearance changes close temporary panels, including voice input, and refresh suggestions without replacing editor text.
+- **Movable or docked overlay:** drag, collapse to a small restore button, or restore from the persistent notification.
+- **Layered diagnostics:** distinguish permission, service, device-registration, focus, and HID-submission problems without logging typed content.
+- **Ordinary IME tools:** multilingual layouts, offline suggestions, emoji, clipboard history, and a Space-key cursor-control surface. These are not all available through the HID overlay.
 
-### Two symbol pages
+## Docking without covering the remote desktop
 
-`123` flips into the first symbols page (`1-0`, punctuation, `=\<` toggles
-into page 2 for `~ • ° § © ® ™ € £ ¥ ¢ ÷ × ± ¬ < > { } [ ] \ …`). `ABC` flips
-back.
+Docking uses the region **UU already reserves**; it does not resize UU or trigger Android IME avoidance.
 
-## Modifiers
+1. Expand UU's own **Computer keyboard**, so its remote display sits above that keyboard region.
+2. Open our overlay and choose **Dock / 停靠**. The top action bar scrolls horizontally if needed.
+3. Drag the calibration strip, or use the height buttons, to align our window's upper edge with UU's keyboard boundary.
 
-Shift, Ctrl, Alt, Meta (Win), Fn and Caps Lock follow the classic
-`OFF → ONCE → LOCKED` tap cycle:
+Portrait and landscape heights are remembered independently. Diagnostics replace the dock's key area instead of extending its height. Small docks hide the shortcut bar; collapsing reveals UU's original keyboard. Recalibrate when UU's layout changes. If UU has not reserved a keyboard region, our dock still covers the desktop.
 
-- **Off** — default appearance.
-- **Once** — thick accent border + a small accent dot in the corner. Applies
-  to the next key press, then auto-releases.
-- **Locked** — full accent background + an underline under the label. Stays
-  on until tapped a third time.
+## Input boundaries and privacy
 
-State converts to `KeyEvent` meta flags via `ModifierState.toMetaState()`, so
-apps see proper `Ctrl+C`, `Shift+Tab`, `Alt+F4`, etc. The state **resets on
-input dismiss**, so a Shift you forgot to clear in one app never carries over
-into the next.
+HID registration or successful report submission does not prove that UU or the remote computer received a key. The working path has been confirmed in a user-tested UU/Mac session, not across all devices. See [setup, diagnostics, and acceptance notes](doc/uu-remote-keyboard.md).
 
-## Long-press alternates
+The overlay checks UU's foreground window and hardware-keyboard focus before sending, and rejects uncertain states. HID follows system focus: the check cannot eliminate focus-switch races. Do not switch apps while typing. Only the primary display is supported. This is not a Bluetooth connection or a way to bypass Android permissions.
 
-Long-pressing any key with alternates opens a popup directly above it. To
-make sure the popup fits even when the pressed key is in the very top row,
-KeyboardView is **intentionally rendered taller than the visible keyboard**
-(90 dp of transparent space at the top), while the IME service reports a
-smaller `contentTopInsets` so the app keeps fitting above the keys. That
-reserved zone hosts the popup, and the app shows through it when nothing is
-being shown.
+Diagnostics retain session-level aggregate counters, not text, key values, clipboard data, or device identifiers. Reports are generated only when explicitly exported and are not automatically uploaded. Ordinary IME clipboard history is a separate local feature. Update checks contact this repository's GitHub Releases.
 
-- The **base character sits in the centre** of the popup, pre-selected — a
-  straight release commits it; sliding left/right walks symmetrically through
-  the alternates.
-- The selected cell is highlighted with an **accent-coloured rounded pill**
-  that's slightly larger than the surrounding cells, with rounded corners on
-  all four sides.
-- For symbol keys the **shift-label is folded into the alternates** — long-
-  pressing `,` exposes `<`, `«`, `‹`, `„`.
-- Cell width and text size **scale with screen width** so even keys with 8+
-  accented variants don't spill off-screen.
+Some combinations are intercepted by Android or UU. Supported Fn+arrow/delete combinations are translated locally; media keys, Touch ID, and a modifier held across several remote commands are not emulated.
 
-## Two-phase Space-trackpad
+<a id="development"></a>
+## Development
 
-Long-press Space → trackpad overlay appears.
+Use **JDK 17** and the Android SDK:
 
-**Phase 1 — Arming.** A circular indicator sits in the centre of the
-keyboard area; the user must slide their finger from Space *into* the
-indicator to arm it. Releasing without entering the indicator restores the
-keyboard and emits no Space character — an accidental long-press costs
-nothing.
-
-**Phase 2 — Free touchpad.** On release after arming, the trackpad doesn't
-close — it switches into a real touchpad surface:
-
-- Each finger-down sets a new origin; subsequent moves emit **relative pixel
-  deltas**. Slow drags move the cursor character-by-character (precision),
-  fast drags fly across lines (range).
-- A small accent dot follows the finger so the user can see where the
-  trackpad is reading them from.
-- An ✕ button at the top-right closes the trackpad. **It's hidden while the
-  finger is on the surface**, so a stray edge-touch during a drag never
-  accidentally dismisses the session.
-- The user can do as many discrete drags as they want — no need to hold one
-  long gesture.
-
-Cursor speed is tunable from Settings → Trackpad sensitivity (0.3× – 3.0×).
-
-## Cursor keys & Enter
-
-Arrow keys, Home / End, Page Up / Page Down and Enter go through
-`InputConnection.setSelection` / `performEditorAction` rather than
-`KeyEvent.KEYCODE_DPAD_*`. That keeps the gesture inside the focused editor —
-on foldables and in free-form / multi-window mode the system window manager
-would otherwise steal a DPAD event to select the floating-window grab handle,
-jump focus to a sibling Send button, etc.
-
-- **← / →** — move caret one character; with **Ctrl** jump by word
-  boundary; with **Shift** extend selection instead of moving.
-- **↑ / ↓** — move caret one line, preserving column.
-- **Home / End** — start / end of current line (extends selection under
-  Shift).
-- **Page Up / Page Down** — ±10 lines.
-- **Enter** — runs the editor's declared `IME_ACTION_*` (Send / Done / Search
-  / Next / …) when one is set; otherwise commits `\n`. Holding any modifier
-  (`Shift+Enter`, `Ctrl+Enter`, …) always commits `\n` — the universal
-  "newline in a chat field" shortcut.
-
-## Emoji picker
-
-Opens from the globe menu, or one-tap from the control row if the user picked
-"😀 Emoji" for the right-of-Space slot.
-
-- **9 categories**: 🕒 Recents (dynamic), 😀 Smileys, 👋 People, 🐶 Animals,
-  🍎 Food, ⚽ Activities, 🚗 Travel, 💡 Objects, ❤️ Symbols, 🏁 Flags
-  (every UN country flag plus the rainbow / transgender / pirate / England /
-  Scotland / Wales variants). ~1500 emojis total.
-- **Recents tab** is fed by an `EmojiUsageTracker` that ranks by use-count
-  then most-recent timestamp, with a starter pack so the tab isn't empty on
-  first open. Search-picked emojis count toward Recents too.
-- **Inline search**: the magnifier pinned at the right of the tab strip flips
-  the picker into search mode. A query bar sits at the top, search results
-  fill the middle, and **the actual keyboard stays mounted underneath** for
-  typing the query — no separate Activity, no second window, no IME juggle.
-- Search is prefix-token against `EmojiKeywords` (1500+ entries). Country
-  names work for flags (`germany` → 🇩🇪, `magyar` → 🇭🇺, `japan` → 🇯🇵, `usa`
-  → 🇺🇸 …); professions for ZWJ profession emojis (`doctor`, `chef`,
-  `astronaut`); gestures, weather, currency etc. all by everyday name.
-- Bottom row: `ABC` returns to the keyboard, `⌫` deletes a character. Both
-  are rendered as rounded accent-coloured pills with a visible gap between
-  them so each touch target reads as its own button.
-- Category tabs are separated by faint divider lines and a divider runs
-  between the last tab and the pinned 🔍.
-
-## Clipboard manager
-
-Opens from the globe menu. A vertical list of up to 20 cards, newest first,
-each showing up to 4 lines of the captured text.
-
-- The IME service registers a `ClipboardManager.OnPrimaryClipChangedListener`
-  so any copy from any app lands here automatically.
-- **Tap** a card to commit the text into the focused editor.
-- **Long-press** opens a full-screen `ClipboardEditorActivity` where the
-  text can be tweaked — Send commits the edited version (and replaces the
-  history entry so the next paste has the fix); X cancels.
-- **Each card has a ✕ button** on the right that removes that one entry.
-- A `🗑 Clear all` button at the top-right wipes the whole history with a
-  two-tap confirmation — the first tap arms it ("Tap to confirm" in accent
-  colour), the second confirms; it auto-disarms after 3 seconds.
-
-## Globe action menu
-
-Long-press the 🌐 key to open a vertical action menu anchored above it.
-
-- Lists every language the user enabled in Settings → Languages, with the
-  current one highlighted.
-- `☐ / ☑ Function row (Esc, F1…)` toggle to force the F-row on on narrow
-  phones.
-- `😀 Emoji`, `📋 Clipboard`, `⚙ Keyboard settings` for the rest of the
-  overlays.
-- **Slide-to-select**: keep the finger pressed, slide up onto the menu and a
-  small haptic ticks every time a row is crossed; releasing on a row fires
-  it. Releasing back on the globe leaves the menu up for tap-to-select.
-- **Auto-scroll while sliding**: if the list is taller than fits, the menu
-  starts scrolled to the bottom (the row the finger lands on first), and the
-  finger drifting near the top edge scrolls more rows into view.
-
-## Settings
-
-- **Sizing**:
-  - Height scale (50 % – 160 %).
-  - Width margin (0 % – 30 % per side) — narrows the keyboard symmetrically
-    from both sides, useful on tablets and unfolded foldables.
-  - Split keyboard mode (≥ 600 dp screens only) with a centre-gap slider
-    (0.5 – 6.0 row weight). Space stretches across the gap so either thumb
-    can hit it.
-- **Long-press delay** (150 – 1000 ms in 10 ms steps) — applies to every
-  key, both popup-character and trackpad gestures.
-- **Trackpad sensitivity** (0.3× – 3.0×) — captured at arming time so cursor
-  speed stays consistent for the whole touchpad session.
-- **Right-of-Space slot** — `123 Symbols` (default), `😀 Emoji` or `⌥ Alt`
-  (a second sticky AltGr for the right thumb). Also reassignable straight
-  from the keyboard by long-pressing the slot itself.
-- **Autocorrect** — `Off` / `Suggest` (default; passive candidate strip
-  above the keys, never edits your text) / `Auto` (additionally replaces
-  a confidently-wrong word at word boundaries: Space, punctuation,
-  Enter, or tapping elsewhere in the text; retyping the corrected word
-  keeps your spelling, vetoes it and teaches it permanently — Backspace
-  itself always just deletes). Suggestions are disabled automatically in
-  password / URL / email fields and terminals.
-- **Themes** — built-in (Light / Dark / Black) plus any custom themes the
-  user has saved; **+ New theme** opens the editor.
-- **Languages** — switches per language; the globe cycles only the enabled
-  set.
-- **Updates** — Auto-update toggle (on / off), interval toggle (12 h / 24 h),
-  manual *Check now* button, *Open install permissions* shortcut with an
-  inline explainer about Samsung Auto Blocker (which silently blocks installs
-  that don't come from Play Store / Galaxy Store — temporarily disable it to
-  update).
-
-## Themes
-
-Built-in **Light, Dark, Black (AMOLED)** and an unlimited number of custom
-themes.
-
-The **theme editor** has:
-
-- Live preview against the real keyboard view.
-- One row per colour (background, key, pressed, text, secondary text,
-  modifier, modifier text, accent, accent text) with a hex input *and* a
-  tinted swatch chip at the end of the field — tapping the swatch opens an
-  **ARGB colour picker dialog** (4 SeekBars + a live preview rectangle + a
-  read-only `#AARRGGBB` label).
-- The picker has **OK / Default / Cancel**: *Default* puts every slider
-  back to the colour the picker opened with, without closing the dialog.
-- Sliders for corner radius and key spacing.
-
-Custom themes are persisted to `SharedPreferences` via `ThemeRepository` and
-listed alongside the built-ins.
-
-## In-app updater
-
-Polls `https://api.github.com/repos/9hm2/pcKeyboard/releases/latest` and
-compares the release tag against `BuildConfig.VERSION_NAME`. A manual *Check
-now* in Settings hits the network unconditionally; automatic checks (via
-`WorkManager`) are throttled to the user-chosen 12 h / 24 h interval and
-only run while pcKeyboard is the default IME.
-
-When a newer release is found:
-
-- **Foreground** (Setup / Settings dialog): a Material dialog shows the
-  version + release notes and offers *Download / View on GitHub / Later*.
-  Tapping Download opens a non-cancellable progress dialog that shows
-  `47 %  ·  2.3 MB / 4.9 MB` while `UpdateDownloader` streams the APK into
-  `context.cacheDir` (no storage permission needed). On completion it fires
-  the system installer through a **FileProvider URI**, so the user goes
-  straight from the in-app download to the install prompt.
-- **Background** (`UpdateCheckWorker`): same downloader, no progress UI; on
-  completion it fires the same FileProvider install intent.
-
-Samsung's Auto Blocker overrides the system "install unknown apps" permission
-and silently blocks installs from non-store sources. The Updates card in
-Settings has an *Open install permissions* button (with a fallback to
-*Application details*) plus an inline note explaining that the user has to
-flip Auto Blocker off briefly to update (it auto-re-enables 30 minutes later
-if you keep that option on).
-
-## Install & enable
-
-1. Install the APK.
-2. Launch the app → **Open system input settings** → enable pcKeyboard.
-3. Tap **Switch keyboard** → pick pcKeyboard.
-
-## Build
-
-```bash
-gradle :app:assembleDebug    # debug APK, signed with bundled debug.keystore
-gradle :app:assembleRelease  # release APK; signed only if env vars are set
+```sh
+./gradlew :app:assembleDebug       # Installable debug APK
+./gradlew :app:testDebugUnitTest   # JUnit and Robolectric tests
+./gradlew :app:lintDebug           # Android lint
+./gradlew :app:assembleRelease     # Unsigned unless signing is configured
 ```
 
-CI is **manual-only** (`workflow_dispatch`) — see
-`.github/workflows/android.yml`. The workflow installs the Android SDK, runs
-lint and builds the debug APK. **Release APKs are built on the developer's
-device only**, never on CI, so the release signing key never has to leave the
-local machine.
+The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. Release signing uses `PCK_KEYSTORE_PASSWORD`, `PCK_KEY_PASSWORD`, and an existing `app/release.keystore` or `PCK_KEYSTORE_FILE`; `PCK_KEY_ALIAS` is optional. The application ID remains `com.pckeyboard.ime`; replacing an existing installation requires the same signing key.
 
-Every workflow run **always publishes a GitHub Release** with the freshly-
-built debug APK attached, so the in-app updater always has something newer
-to find. Inputs:
+Kotlin code lives under `app/src/main/java/com/pckeyboard/ime/`: `remote/` owns the overlay/HID path, `service/` the IME, and `view/`, `layout/`, and `theme/` the shared keyboard. Tests live in `app/src/test/java/`; read-only device probes are in `test/device/`. Automated tests do not establish end-to-end remote delivery.
 
-- `release_tag` — optional. Custom tag like `v1.2.0`. If empty, auto-tags
-  with `ci-YYYYMMDD-HHMMSS` (UTC).
-- `prerelease` — optional boolean. Marks the release as a pre-release, which
-  excludes it from `/releases/latest` (and therefore from the in-app
-  updater) so you can publish test builds without notifying users.
+## License and acknowledgements
 
-The debug keystore (`app/debug.keystore`, the well-known Android default) is
-committed so debug APKs are signed identically on every machine. The release
-keystore is **not** in the repo — see `app/build.gradle.kts` for the env
-vars `assembleRelease` reads.
+Licensed under [GPL v3](LICENSE), building on [9hm2's upstream keyboard project](https://github.com/9hm2/pcKeyboard). Existing copyright and license notices remain applicable.
 
-## Architecture
-
-```
-model/        Key, KeyType, KeyboardLayout, ModifierState (sticky tap-once /
-              tap-lock cycle, KeyEvent meta-flag conversion).
-
-layout/       LayoutBlocks       — shared Fn / number / control / symbols
-                                   rows reused by every locale.
-              EnglishLayout / HungarianLayout / GermanLayout /
-                SpanishLayout     — locale-specific letter rows with
-                                    Key.altLabel for the held-Alt AltGr
-                                    glyphs from each xkb table.
-              LayoutRegistry      — locale id → LayoutPack lookup.
-              LayoutVariant /
-                LayoutSelector    — COMPACT (no Fn row) ↔ FULL PC variant
-                                    chosen from widthDp (overridable via
-                                    KeyboardPrefs.showFunctionRow).
-
-theme/        KeyboardTheme data class, built-in Themes (Light / Dark /
-              Black), ThemeRepository (custom theme persistence).
-
-view/         KeyboardView       — FrameLayout that hosts mainContainer
-                                   (popupZone + optional emojiSearchHeader
-                                   + rowsContainer) plus the optional
-                                   overlays (popup, action menu, emoji
-                                   picker, clipboard view, trackpad).
-                                   Reports a smaller contentTopInsets in
-                                   PcKeyboardService.onComputeInsets so the
-                                   popup zone stays transparent over the
-                                   app behind.
-              KeyView            — single key renderer (off / armed / locked
-                                   states, repeatable hold, long-press
-                                   timer).
-              KeyPopupView       — horizontal alternate-character strip
-                                   with dynamic cell sizing and a fully-
-                                   rounded accent-coloured selection pill.
-              ActionMenuView     — vertical globe-long-press menu with
-                                   slide-to-select + auto-scroll.
-              TrackpadView       — two-phase touchpad overlay: arming
-                                   indicator → free touchpad with relative
-                                   pixel deltas, finger-follow dot, and a
-                                   ✕ close button that hides while
-                                   touching.
-              EmojiView /
-                EmojiCatalog /
-                EmojiKeywords /
-                EmojiUsageTracker /
-                EmojiSearchHeaderView — picker, search bar overlay above
-                                   the keyboard rows, 9 categories +
-                                   Recents.
-
-clipboard/    ClipboardView /
-                ClipboardHistory /
-                ClipboardEditorActivity /
-                ClipboardEditorBridge — list of cards, per-entry delete,
-                                   clear-all-with-confirm, full-screen
-                                   edit window with a static-singleton
-                                   bridge back into the IME service.
-
-editor/       ThemeEditorActivity — live-preview keyboard + hex + swatch
-                                   chip per colour.
-              ColorPickerDialog   — ARGB SeekBars + preview + Default /
-                                   OK / Cancel.
-
-updater/      UpdateChecker      — GitHub releases API + version compare.
-              UpdateDownloader   — HttpURLConnection stream → cacheDir
-                                   + FileProvider install intent.
-              UpdateUi           — Setup / Settings glue: Material dialog
-                                   + progress dialog.
-              UpdateScheduler /
-                UpdateCheckWorker — WorkManager periodic background check.
-
-settings/     SetupActivity      — onboarding (enable + switch IME).
-              SettingsActivity   — sizing / theme picker / languages /
-                                   updates / right-of-Space.
-              KeyboardPrefs      — every persisted preference.
-              InsetUtils         — system-bar inset helpers.
-
-service/      PcKeyboardService — InputMethodService entry-point. Converts
-                                  Key + ModifierState to InputConnection
-                                  calls: commitText for characters,
-                                  setSelection for cursor / arrow keys
-                                  (with Ctrl word-jump and Shift selection
-                                  extension), performEditorAction for
-                                  Enter, sendKeyEvent only for keys whose
-                                  modifier semantics actually need it
-                                  (Backspace, Delete, Tab, Esc, F-row).
-                                  Reports contentTopInsets for the popup
-                                  zone in onComputeInsets, resets modifier
-                                  + emoji + clipboard + symbol-page state
-                                  on onFinishInputView so the next session
-                                  always starts on the main letters.
-```
-
-## License
-
-GPL v3 — see [LICENSE](LICENSE).
-
-The word-frequency dictionaries in `app/src/main/assets/dict/` are
-derived from the OpenSubtitles-2018 frequency lists published in
-[hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords)
-(CC-BY-SA 4.0); see `scripts/generate_dictionaries.py` for how they're
-produced.
-
-The bigram (word-pair) models in `app/src/main/assets/dict/*.bigrams`
-are computed by `scripts/generate_bigrams.py` from the news-2020 1M
-sentence corpora of the [Leipzig Corpora Collection](https://wortschatz.uni-leipzig.de/en/download)
-(CC BY).
-
-The Hunspell dictionaries in `app/src/main/assets/hunspell/` come from
-the [LibreOffice dictionaries](https://github.com/LibreOffice/dictionaries)
-collection: hu_HU (magyarispell, GPL/LGPL/MPL tri-license), en_US
-(SCOWL), de_DE (frami, GPL 3), es_ES (GPL 3 / LGPL / MPL). Spell
-checking runs on Apache Lucene's pure-Java Hunspell implementation
-(Apache License 2.0).
+Frequency dictionaries derive from [FrequencyWords](https://github.com/hermitdave/FrequencyWords), OpenSubtitles-2018 lists (CC-BY-SA 4.0). Bigram models use the [Leipzig Corpora Collection](https://wortschatz.uni-leipzig.de/en/download), news-2020 corpora (CC BY). Hunspell assets come from [LibreOffice dictionaries](https://github.com/LibreOffice/dictionaries): hu_HU (magyarispell, GPL/LGPL/MPL), en_US (SCOWL), de_DE (frami, GPL 3), and es_ES (GPL 3/LGPL/MPL). The Hunspell implementation uses Apache Lucene (Apache License 2.0).

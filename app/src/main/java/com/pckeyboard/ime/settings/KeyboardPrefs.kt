@@ -199,6 +199,24 @@ class KeyboardPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_UU_SHORTCUT_BAR, true)
         set(value) { prefs.edit().putBoolean(KEY_UU_SHORTCUT_BAR, value).apply() }
 
+    /** Restores the manually selected overlay mode without affecting the ordinary IME. */
+    var uuOverlayDocked: Boolean
+        get() = prefs.getBoolean(KEY_UU_OVERLAY_DOCKED, false)
+        set(value) { prefs.edit().putBoolean(KEY_UU_OVERLAY_DOCKED, value).apply() }
+
+    /** Reads the calibration for the current display orientation. */
+    fun uuDockHeightRatio(landscape: Boolean): Float {
+        val ratio = prefs.getFloat(if (landscape) KEY_UU_DOCK_LANDSCAPE else KEY_UU_DOCK_PORTRAIT, 0.46f)
+        return if (ratio.isFinite()) ratio.coerceIn(0.15f, 0.85f) else 0.46f
+    }
+
+    /** Saves independent landscape and portrait ratios rather than device-specific pixels. */
+    fun setUuDockHeightRatio(landscape: Boolean, ratio: Float) {
+        if (!ratio.isFinite()) return
+        prefs.edit().putFloat(if (landscape) KEY_UU_DOCK_LANDSCAPE else KEY_UU_DOCK_PORTRAIT,
+            ratio.coerceIn(0.15f, 0.85f)).apply()
+    }
+
     /** Observes only remote layout settings and returns an explicit unsubscribe action. */
     fun observeRemoteLayoutChanges(onChange: () -> Unit): () -> Unit {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -273,6 +291,9 @@ class KeyboardPrefs(context: Context) {
         private const val KEY_KEYBOARD_PLATFORM = "kb_keyboard_platform"
         private const val KEY_UU_COMMAND_COMPATIBILITY = "kb_uu_command_compatibility"
         private const val KEY_UU_SHORTCUT_BAR = "kb_uu_shortcut_bar"
+        private const val KEY_UU_OVERLAY_DOCKED = "kb_uu_overlay_docked"
+        private const val KEY_UU_DOCK_LANDSCAPE = "kb_uu_dock_landscape"
+        private const val KEY_UU_DOCK_PORTRAIT = "kb_uu_dock_portrait"
         /** Weight of the big empty centre when sideSplit is on. */
         const val SIDE_SPLIT_GAP_WEIGHT = 5f
 

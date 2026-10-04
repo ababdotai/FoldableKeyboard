@@ -52,7 +52,7 @@ internal fun systemKeyboardDiagnosticReport(
     environment: SystemKeyboardEnvironment,
     snapshot: SystemKeyboardSnapshot,
 ): String = buildString {
-    appendLine("pcKeyboard UU keyboard diagnostics / schema 2")
+    appendLine("FoldableKeyboard UU keyboard diagnostics / schema 2")
     appendLine("scope=UU_FLOATING_SYSTEM_KEYBOARD_ONLY")
     appendLine("android_sdk=${environment.androidSdk}")
     appendLine("app_version_code=${environment.appVersionCode}")

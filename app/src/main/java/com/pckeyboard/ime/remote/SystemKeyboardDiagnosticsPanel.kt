@@ -101,13 +101,13 @@ internal class SystemKeyboardDiagnosticsPanel @JvmOverloads constructor(
             beforeShare()
             val directory = File(context.cacheDir, "diagnostics")
             check(directory.isDirectory || directory.mkdirs())
-            val file = File(directory, "uu-keyboard-diagnostics.txt")
+            val file = File(directory, "FoldableKeyboard-uu-diagnostics.txt")
             file.writeText(report, Charsets.UTF_8)
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val send = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, uri)
-                clipData = ClipData.newRawUri("UU keyboard diagnostics", uri)
+                clipData = ClipData.newRawUri("FoldableKeyboard UU keyboard diagnostics", uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             val chooser = Intent.createChooser(send, context.getString(R.string.uu_diagnostics_export))

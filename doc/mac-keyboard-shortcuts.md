@@ -1,6 +1,6 @@
 # Mac 组合键
 
-在设置的 `Keyboard layout` 中选择 `Mac`。⌘ 对应 Command，⌥ 对应 Option，⌃ 对应 Control；不是将所有 Ctrl 改成 Command。
+在设置的“按键布局”中选择 `Mac`。⌘ 对应 Command，⌥ 对应 Option，⌃ 对应 Control；不是将所有 Ctrl 改成 Command。
 
 ## 操作方式
 
@@ -14,9 +14,9 @@ Mac 模式在本地将 `fn+退格` 转为向前删除，`fn+↑/↓` 转为 Page
 
 ## UU 必须配置的兼容入口
 
-Android 会拦截 Meta/Command 以及部分系统组合；单纯向系统发送 Meta 并不等于 UU 收到 Command。UU Mac 悬浮键盘默认启用 `Command compatibility (Right Ctrl)`：仅将 Command 编码为右 Ctrl，交由 UU 内建映射恢复为 Command；真正的 Control 仍为左 Ctrl，两者可同时使用。
+Android 会拦截 Meta/Command 以及部分系统组合；单纯向系统发送 Meta 并不等于 UU 收到 Command。UU Mac 悬浮键盘默认启用 Command 兼容选项（右 Ctrl）：仅将 Command 编码为右 Ctrl，交由 UU 内建映射恢复为 Command；真正的 Control 仍为左 Ctrl，两者可同时使用。
 
-在 UU 的“按键替代”中开启 **`「右 Ctrl」=「Cmd」`**，关闭 **`「右 Alt」=「Esc」`**，并关闭 UU 的“全键盘控制”（无障碍服务名“UU远程键盘外设”）。官方 UU 4.40.0 在该无障碍服务开启时不执行右 Ctrl 替代，不能自动假定兼容前提已经满足。pcKeyboard 不会代改 UU 的设置。
+在 UU 的“按键替代”中开启 **`「右 Ctrl」=「Cmd」`**，关闭 **`「右 Alt」=「Esc」`**，并关闭 UU 的“全键盘控制”（无障碍服务名“UU远程键盘外设”）。官方 UU 4.40.0 在该无障碍服务开启时不执行右 Ctrl 替代，不能自动假定兼容前提已经满足。FoldableKeyboard 不会代改 UU 的设置。
 
 若关闭兼容开关，将恢复直接 Meta 事件，可能被 Android 消费。这个替代只作用于 UU Mac 悬浮键盘，不改变普通 RAW、Normal 或 Windows 布局。
 

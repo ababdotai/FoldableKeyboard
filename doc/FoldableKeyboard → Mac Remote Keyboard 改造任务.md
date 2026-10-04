@@ -1,10 +1,12 @@
-# pcKeyboard → Mac Remote Keyboard 改造任务
+# FoldableKeyboard → Mac Remote Keyboard 改造任务
+
+> 历史需求记录，产品名称已统一为 FoldableKeyboard。本文描述最初设想，不代表当前兼容性结论；现行方案与使用方式以 [UU 远程键盘说明](uu-remote-keyboard.md) 为准。
 
 ## 0. 项目目标
 
-基于现有开源项目 **pcKeyboard** 进行最小化改造。
+基于现有开源项目进行最小化改造，当前项目名称为 **FoldableKeyboard**。
 
-目标不是开发一个新的 Android 中文输入法，而是把 pcKeyboard 改造成：
+目标不是开发一个新的 Android 中文输入法，而是把 FoldableKeyboard 改造成：
 
 > **面向 Android 折叠屏 + 远程桌面场景的虚拟硬件键盘。**
 
@@ -13,7 +15,7 @@
 ```text
 Android Foldable
       ↓
-pcKeyboard
+FoldableKeyboard
       ↓
 网易 UU 远程
       ↓
@@ -35,7 +37,7 @@ macOS 自己的中文/英文输入法
 
 > **UU 本身已经能够正确转发硬件 Keyboard Event。**
 
-目前 pcKeyboard 的问题是：
+目前 FoldableKeyboard 的问题是：
 
 - 普通字符主要通过 `InputConnection.commitText()` 提交；
 - 某些方向键、Enter 等使用 Android 本地文本编辑语义；
@@ -50,7 +52,7 @@ macOS 自己的中文/英文输入法
 
 ## 核心原则
 
-**保留 pcKeyboard 当前 UI，不要先重写界面。**
+**保留 FoldableKeyboard 当前 UI，不要先重写界面。**
 
 新增一种输入模式：
 
@@ -181,7 +183,7 @@ private fun sendRawKey(
 
 以上只是参考。
 
-请结合 pcKeyboard 当前代码结构以及 Android API 正确实现，不必机械照抄。
+请结合 FoldableKeyboard 当前代码结构以及 Android API 正确实现，不必机械照抄。
 
 重点是：
 
@@ -325,7 +327,7 @@ Insert
 
 # 7. Modifier 处理
 
-需要保留并尽量复用 pcKeyboard 当前 ModifierState 设计。
+需要保留并尽量复用 FoldableKeyboard 当前 ModifierState 设计。
 
 需要支持：
 
@@ -368,7 +370,7 @@ C up
 META up
 ```
 
-请研究 pcKeyboard 当前 modifier 实现，并选择与 UU 兼容性最好的方式。
+请研究 FoldableKeyboard 当前 modifier 实现，并选择与 UU 兼容性最好的方式。
 
 ---
 
@@ -406,7 +408,7 @@ C
 
 ### Sticky / Lock
 
-如果 pcKeyboard 当前已经有类似功能，尽量复用，不要重新实现。
+如果 FoldableKeyboard 当前已经有类似功能，尽量复用，不要重新实现。
 
 例如：
 
@@ -462,7 +464,7 @@ Android 键盘不关心远端语言。
 
 # 10. Phase 1 暂时不要修改 UI
 
-第一阶段保持 pcKeyboard 当前 UI。
+第一阶段保持 FoldableKeyboard 当前 UI。
 
 只修改：
 
@@ -482,7 +484,7 @@ Input dispatch backend
 
 我们需要先验证：
 
-> **pcKeyboard UI → Raw KeyEvent → UU → macOS**
+> **FoldableKeyboard UI → Raw KeyEvent → UU → macOS**
 
 链路。
 
@@ -495,7 +497,7 @@ Input dispatch backend
 ```text
 Android 折叠屏
      ↓
-pcKeyboard modified APK
+FoldableKeyboard modified APK
      ↓
 UU
      ↓
@@ -673,7 +675,7 @@ fn   ⌃   ⌥   ⌘        Space        ⌘   ⌥   ◀ ▲ ▼ ▶
 - 极简；
 - 接近 MacBook；
 - 不做花哨设计；
-- 尽可能保留 pcKeyboard 当前简洁视觉风格；
+- 尽可能保留 FoldableKeyboard 当前简洁视觉风格；
 - 折叠屏展开状态优先；
 - 主要面向竖屏；
 - 键盘占屏幕高度约 30–35%，后续可配置。
@@ -711,7 +713,7 @@ vs
 
 ### 1. 最小改造
 
-尽量 fork + patch pcKeyboard。
+尽量通过 fork + patch 实现 FoldableKeyboard。
 
 不要重写 IME。
 
@@ -790,7 +792,7 @@ macOS input method
 
 只交付：
 
-1. 对 pcKeyboard 当前输入事件链的简要分析；
+1. 对 FoldableKeyboard 当前输入事件链的简要分析；
 2. 新增 `RAW_REMOTE` mode；
 3. A-Z、数字、常见标点 raw KeyEvent；
 4. Space / Enter / Backspace / Tab / Esc；
@@ -810,7 +812,7 @@ macOS input method
 ```text
 Mac 中文拼音开启
 ↓
-Android pcKeyboard 输入 nihao
+Android FoldableKeyboard 输入 nihao
 ↓
 Mac 出现「你好」候选词
 ```

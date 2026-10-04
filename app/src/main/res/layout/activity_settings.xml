@@ -701,6 +701,22 @@
                 android:text="@string/settings_section_themes"
                 android:textAppearance="?attr/textAppearanceTitleMedium" />
 
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/followSystemTheme"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:minHeight="48dp"
+                android:text="@string/theme_follow_system" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="8dp"
+                android:text="@string/theme_follow_system_hint"
+                android:textAppearance="?attr/textAppearanceBodySmall" />
+
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/themeList"
                 android:layout_width="match_parent"

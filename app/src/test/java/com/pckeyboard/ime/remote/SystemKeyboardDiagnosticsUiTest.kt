@@ -52,7 +52,7 @@ class SystemKeyboardDiagnosticsUiTest {
             assertTrue(text.contains("不包含普通输入法的 RAW 通道"))
             assertEquals(null, shadowOf(activity).nextStartedActivity)
             assertEquals(null, shadowOf(activity).nextStartedService)
-            assertFalse(File(activity.cacheDir, "diagnostics/uu-keyboard-diagnostics.txt").exists())
+            assertFalse(File(activity.cacheDir, "diagnostics/FoldableKeyboard-uu-diagnostics.txt").exists())
         } finally {
             controller.pause().stop().destroy()
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
@@ -79,13 +79,14 @@ class SystemKeyboardDiagnosticsUiTest {
             assertEquals("content", uri.scheme)
             assertEquals("${activity.packageName}.fileprovider", uri.authority)
             assertEquals(uri, share.clipData!!.getItemAt(0).uri)
-            val file = File(activity.cacheDir, "diagnostics/uu-keyboard-diagnostics.txt")
+            val file = File(activity.cacheDir, "diagnostics/FoldableKeyboard-uu-diagnostics.txt")
             activity.contentResolver.query(uri, null, null, null, null)!!.use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals(file.name, cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)))
                 assertEquals(file.length(), cursor.getLong(cursor.getColumnIndexOrThrow(OpenableColumns.SIZE)))
             }
             val report = file.readText()
+            assertTrue(report.startsWith("FoldableKeyboard UU keyboard diagnostics / schema 2"))
             assertTrue(report.contains("remote_delivery=UNCONFIRMED"))
             assertFalse(report.contains("key_code="))
         } finally {

@@ -32,6 +32,7 @@ class SystemKeyboardDiagnosticReportTest {
     @Test
     fun exportContainsOnlyAllowlistedFields() {
         val report = systemKeyboardDiagnosticReport(environment, SystemKeyboardSnapshot())
+        assertTrue(report.startsWith("FoldableKeyboard UU keyboard diagnostics / schema 2"))
         val fields = report.lineSequence().filter { '=' in it }.map { it.substringBefore('=') }.toSet()
         assertEquals(setOf(
             "scope", "android_sdk", "app_version_code", "uu_version_code", "overlay_allowed",
