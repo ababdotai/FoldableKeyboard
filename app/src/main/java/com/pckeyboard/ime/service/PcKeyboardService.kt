@@ -10,6 +10,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
+import android.widget.Toast
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputMethodSubtype
@@ -29,8 +30,10 @@ import com.pckeyboard.ime.dictionary.UserDictionary
 import com.pckeyboard.ime.dispatch.DispatchMode
 import com.pckeyboard.ime.dispatch.QueuedRawKey
 import com.pckeyboard.ime.dispatch.RawKeyDispatcher
-import com.pckeyboard.ime.dispatch.RawKeyMapper
 import com.pckeyboard.ime.dispatch.RawKeyRetryQueue
+import com.pckeyboard.ime.dispatch.RawKeyRouter
+import com.pckeyboard.ime.layout.LayoutBlocks
+import com.pckeyboard.ime.layout.KeyboardPlatform
 import com.pckeyboard.ime.layout.LayoutRegistry
 import com.pckeyboard.ime.layout.LayoutSelector
 import com.pckeyboard.ime.model.Key
@@ -77,6 +80,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
     private val rawKeyRetryQueue = RawKeyRetryQueue()
     private val rawRetryHandler = Handler(Looper.getMainLooper())
     private var rawDrainScheduledAtMs: Long? = null
+    private var observedDispatchMode = DispatchMode.NORMAL
     private val rawDrainRunnable = Runnable {
         rawDrainScheduledAtMs = null
         drainRawKeyQueue()
@@ -161,6 +165,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         super.onCreate()
         themeRepo = ThemeRepository(this)
         kbPrefs = KeyboardPrefs(this)
+        observedDispatchMode = kbPrefs.dispatchMode
         currentLayoutId = kbPrefs.currentLanguage
         // WorkManager initialises through credential-encrypted storage,
         // which is unreachable during Direct Boot (the window between
@@ -336,6 +341,12 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        synchronizeDispatchMode()
+        if (!restarting && isRawRemoteMode() &&
+            info?.packageName == com.pckeyboard.ime.remote.UuKeyboardOverlayService.UU_PACKAGE
+        ) {
+            Toast.makeText(this, com.pckeyboard.ime.R.string.uu_ime_entry_hint, Toast.LENGTH_LONG).show()
+        }
         postRawQueueDrain()
         // Re-read the persisted language id on every session. The IME
         // may have first started during Direct Boot (lock screen), at
@@ -479,7 +490,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         }
     }
 
+    /** Resolves locale, desktop platform, screen variant, and user key customizations. */
     private fun bindCurrentLayout() {
+        synchronizeDispatchMode()
         val view = keyboardView ?: return
         view.currentLanguageId = currentLayoutId
         // Raw mode represents a US physical keyboard. Keeping the user's saved language intact
@@ -496,9 +509,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // otherwise drop the F-key row.
         val variant = if (KeyboardPrefs(this).showFunctionRow) com.pckeyboard.ime.layout.LayoutVariant.FULL
                       else LayoutSelector.pick(widthDp)
+        val platformLayout = LayoutBlocks.applyPlatform(base, kbPrefs.keyboardPlatform)
         val finalLayout = withRightOfSpaceAction(
             withLanguageLabel(
-                LayoutSelector.apply(base, variant),
+                LayoutSelector.apply(platformLayout, variant),
                 languageLabelFor(currentLayoutId)
             ),
             kbPrefs.rightOfSpaceAction
@@ -566,49 +580,29 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     private fun languageLabelFor(id: String): String = languageCode(id)
 
-    /** Returns true when every supported key must use hardware-like remote dispatch. */
+    /** Returns true when the remote host owns character and shortcut interpretation. */
     private fun isRawRemoteMode(): Boolean = kbPrefs.dispatchMode == DispatchMode.RAW_REMOTE
 
     /**
-     * Routes one visible keyboard key through the raw event backend.
-     *
-     * Unsupported characters are intentionally dropped: falling back to commitText would bypass
-     * the remote operating system's input method and break the hardware-keyboard contract.
+     * Clears transient remote state when Settings changes the dispatch mode between sessions.
      */
+    private fun synchronizeDispatchMode() {
+        val currentMode = kbPrefs.dispatchMode
+        if (currentMode == observedDispatchMode) return
+        clearRawKeyQueue()
+        observedDispatchMode = currentMode
+    }
+
+    /** Routes local UI actions locally and all supported remote keys through raw dispatch. */
     private fun dispatchRawKey(key: Key, modifiers: ModifierState) {
         when (key.type) {
             KeyType.SYMBOL_SWITCH -> switchSymbols()
             KeyType.LAYOUT_SWITCH -> switchSymbolsShift()
             KeyType.EMOJI -> keyboardView?.showEmojiPicker()
             KeyType.HIDE -> requestHideSelf(0)
-            KeyType.LETTER, KeyType.CHAR -> {
-                val character = if (modifiers.isShiftActive() && key.shiftLabel != null) {
-                    key.shiftLabel.first()
-                } else {
-                    key.label.first()
-                }
-                val stroke = RawKeyMapper.forCharacter(character) ?: return
-                sendRawKey(stroke.keyCode, modifiers.toMetaState() or stroke.requiredMetaState)
+            else -> RawKeyRouter.strokeFor(key, modifiers, kbPrefs.keyboardPlatform)?.let { stroke ->
+                sendRawKey(stroke.keyCode, stroke.requiredMetaState)
             }
-            KeyType.SPACE -> sendRawKey(KeyEvent.KEYCODE_SPACE, modifiers.toMetaState())
-            KeyType.ENTER -> sendRawKey(KeyEvent.KEYCODE_ENTER, modifiers.toMetaState())
-            KeyType.BACKSPACE -> sendRawKey(KeyEvent.KEYCODE_DEL, modifiers.toMetaState())
-            KeyType.DELETE -> sendRawKey(KeyEvent.KEYCODE_FORWARD_DEL, modifiers.toMetaState())
-            KeyType.TAB -> sendRawKey(KeyEvent.KEYCODE_TAB, modifiers.toMetaState())
-            KeyType.ESC -> sendRawKey(KeyEvent.KEYCODE_ESCAPE, modifiers.toMetaState())
-            KeyType.ARROW_LEFT -> sendRawKey(KeyEvent.KEYCODE_DPAD_LEFT, modifiers.toMetaState())
-            KeyType.ARROW_RIGHT -> sendRawKey(KeyEvent.KEYCODE_DPAD_RIGHT, modifiers.toMetaState())
-            KeyType.ARROW_UP -> sendRawKey(KeyEvent.KEYCODE_DPAD_UP, modifiers.toMetaState())
-            KeyType.ARROW_DOWN -> sendRawKey(KeyEvent.KEYCODE_DPAD_DOWN, modifiers.toMetaState())
-            KeyType.HOME -> sendRawKey(KeyEvent.KEYCODE_MOVE_HOME, modifiers.toMetaState())
-            KeyType.END -> sendRawKey(KeyEvent.KEYCODE_MOVE_END, modifiers.toMetaState())
-            KeyType.PAGE_UP -> sendRawKey(KeyEvent.KEYCODE_PAGE_UP, modifiers.toMetaState())
-            KeyType.PAGE_DOWN -> sendRawKey(KeyEvent.KEYCODE_PAGE_DOWN, modifiers.toMetaState())
-            KeyType.INSERT -> sendRawKey(KeyEvent.KEYCODE_INSERT, modifiers.toMetaState())
-            KeyType.FN -> if (key.keyCode != 0) {
-                sendRawKey(key.keyCode, modifiers.toMetaState())
-            }
-            else -> Unit
         }
     }
 
@@ -692,11 +686,13 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (currentInputStarted) currentInputEditorInfo?.packageName else null
 
     override fun onKey(key: Key, modifiers: ModifierState) {
+        synchronizeDispatchMode()
         if (isRawRemoteMode()) {
             dispatchRawKey(key, modifiers)
             return
         }
         if (currentInputConnection == null) return
+        if (dispatchMacShortcut(key, modifiers)) return
         if (key.type == KeyType.BACKSPACE) {
             sendKey(KeyEvent.KEYCODE_DEL, modifiers)
             updateSuggestions()
@@ -788,6 +784,20 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // Recompute the strip from the editor's actual text so it stays
         // honest across cursor motion, deletes and mode switches.
         updateSuggestions()
+    }
+
+    /** Bypasses local editor mutations for Mac shortcuts while preserving keyboard-only actions. */
+    private fun dispatchMacShortcut(key: Key, modifiers: ModifierState): Boolean {
+        if (kbPrefs.keyboardPlatform != KeyboardPlatform.MAC || !modifiers.shouldSendAsKeyEvent()) {
+            return false
+        }
+        val stroke = RawKeyRouter.strokeFor(key, modifiers, KeyboardPlatform.MAC)
+        if (stroke == null && key.type != KeyType.LETTER && key.type != KeyType.CHAR) return false
+        lastEventWasTyping = false
+        keyboardView?.setSuggestions(emptyList())
+        stroke?.let { sendRawKey(it.keyCode, it.requiredMetaState) }
+        // Unsupported glyphs must not become committed text while a shortcut modifier is active.
+        return true
     }
 
     // --- Autocorrect ------------------------------------------------------
@@ -1180,7 +1190,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         return when {
             key.type == KeyType.LETTER && modifiers.isShiftActive() -> key.label.uppercase()[0]
             key.type == KeyType.LETTER -> key.label[0]
-            key.type == KeyType.CHAR && modifiers.isShiftActive() && key.shiftLabel != null -> key.shiftLabel[0]
+            key.type == KeyType.CHAR && modifiers.isShiftModifierActive() && key.shiftLabel != null -> key.shiftLabel[0]
             else -> key.label[0]
         }
     }
@@ -1232,6 +1242,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         "com.kpym.terminalemulator"
     )
 
+    /** Sends a Normal-mode key, framing modifiers for terminal-style editors when required. */
     private fun sendKey(keyCode: Int, modifiers: ModifierState) {
         val ic = currentInputConnection ?: return
         val meta = modifiers.toMetaState()
@@ -1244,11 +1255,10 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         // Ctrl+C actually arrive as Ctrl+C. Normal Android editors keep the
         // plain metaState-on-one-event behaviour.
         //
-        // Only Ctrl/Alt/Meta combos need this framing. Plain navigation is left
-        // alone so that Caps Lock (which counts as "shift active") doesn't turn
-        // every arrow into Shift+arrow.
-        val needsRealModifiers =
-            modifiers.isCtrlActive() || modifiers.isAltActive() || modifiers.isMetaActive()
+        // Only Ctrl/Alt/Meta/Fn combos need this framing. Caps Lock changes letter
+        // case only; it must never become a synthetic physical Shift press.
+        val needsRealModifiers = modifiers.isCtrlActive() || modifiers.isAltActive() ||
+            modifiers.isMetaActive() || modifiers.isFnActive()
         val wrapModifiers = needsRealModifiers && isTerminalLikeEditor()
         if (wrapModifiers) sendModifierKeys(modifiers, down = true, meta = meta)
         ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, meta))
@@ -1266,10 +1276,11 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         val action = if (down) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP
         val now = System.currentTimeMillis()
         val codes = buildList {
-            if (modifiers.isShiftActive()) add(KeyEvent.KEYCODE_SHIFT_LEFT)
+            if (modifiers.isShiftModifierActive()) add(KeyEvent.KEYCODE_SHIFT_LEFT)
             if (modifiers.isCtrlActive()) add(KeyEvent.KEYCODE_CTRL_LEFT)
-            if (modifiers.isAltActive()) add(KeyEvent.KEYCODE_ALT_LEFT)
-            if (modifiers.isMetaActive()) add(KeyEvent.KEYCODE_META_LEFT)
+            if (modifiers.isAltActive()) add(modifiers.altKeyCode())
+            if (modifiers.isMetaActive()) add(modifiers.metaKeyCode())
+            if (modifiers.isFnActive()) add(KeyEvent.KEYCODE_FUNCTION)
         }
         val ordered = if (down) codes else codes.asReversed()
         for (code in ordered) {
@@ -1297,6 +1308,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.setSuggestions(emptyList())
     }
 
+    /** Applies an action selected from the Globe or Mac-fn long-press menu. */
     override fun onMenuAction(action: MenuAction) {
         when (action) {
             is MenuAction.SwitchLanguage -> {
@@ -1309,6 +1321,12 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             }
             MenuAction.OpenEmoji -> {
                 keyboardView?.showEmojiPicker()
+            }
+            MenuAction.OpenSymbols -> {
+                currentMode = LayoutMode.SYMBOLS
+                keyboardView?.hideEmojiPicker()
+                keyboardView?.hideClipboard()
+                bindCurrentLayout()
             }
             MenuAction.OpenClipboard -> {
                 // Snapshot the system clip into history so it shows up as
@@ -1460,7 +1478,7 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (anchor < 0 || active < 0) return
 
         val isCtrl = modifiers?.isCtrlActive() == true
-        val isShift = modifiers?.isShiftActive() == true
+        val isShift = modifiers?.isShiftModifierActive() == true
 
         var newActive = active
 
@@ -1547,9 +1565,9 @@ class PcKeyboardService : InputMethodService(), KeyboardView.Listener {
             sendKey(KeyEvent.KEYCODE_ENTER, modifiers)
             return
         }
-        // Any modifier on Enter means "newline" rather than "submit form"
-        // (Shift+Enter is the universal "newline in a chat field" combo).
-        if (modifiers.isShiftActive() || modifiers.shouldSendAsKeyEvent()) {
+        // An explicit modifier on Enter means "newline" rather than "submit form".
+        // Caps Lock affects letter case, not the editor's configured Enter action.
+        if (modifiers.isShiftModifierActive() || modifiers.shouldSendAsKeyEvent()) {
             ic.commitText("\n", 1)
             return
         }

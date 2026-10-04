@@ -7,13 +7,16 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Build
 import android.util.TypedValue
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import com.pckeyboard.ime.model.Key
 import com.pckeyboard.ime.model.KeyType
+import com.pckeyboard.ime.model.ModifierSide
 import com.pckeyboard.ime.model.ModifierState
 import com.pckeyboard.ime.settings.KeyboardPrefs
 import com.pckeyboard.ime.theme.KeyboardTheme
+import com.pckeyboard.ime.theme.KeyStyle
 
 /**
  * Renders a single key. Handles its own touch (pressed) feedback so the
@@ -41,16 +44,22 @@ class KeyView(
         typeface = Typeface.create("sans-serif", Typeface.NORMAL)
     }
     private val rect = RectF()
+    private val magicRenderer by lazy { MagicKeyRenderer(resources.displayMetrics) }
 
     init {
         isClickable = true
         isFocusable = true
+        contentDescription = magicKeyAccessibilityLabel(key)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             tooltipText = key.label
         }
     }
 
     override fun onDraw(canvas: Canvas) {
+        if (theme.keyStyle == KeyStyle.MAGIC) {
+            magicRenderer.draw(canvas, key, theme, modifierState(), isDown, width, height)
+            return
+        }
         val pad = dp(theme.keySpacingDp / 2f)
         rect.set(pad, pad, width - pad, height - pad)
         val radius = dp(theme.keyCornerRadiusDp.toFloat())
@@ -73,7 +82,11 @@ class KeyView(
             bgPaint.style = Paint.Style.FILL
         }
 
-        val isShifted = modifiers.isShiftActive()
+        val isShifted = if (key.type == KeyType.LETTER) {
+            modifiers.isShiftActive()
+        } else {
+            modifiers.isShiftModifierActive()
+        }
         val isAltActive = modifiers.isAltActive()
         val altChar = key.altLabel?.takeIf {
             isAltActive && (key.type == KeyType.LETTER || key.type == KeyType.CHAR)
@@ -147,12 +160,17 @@ class KeyView(
         }
     }
 
+    /** Returns the sticky state represented by this key, excluding F1-F12 action keys. */
     private fun modifierState(): ModifierState.State = when (key.type) {
         KeyType.SHIFT -> modifiers.shift
         KeyType.CTRL -> modifiers.ctrl
-        KeyType.ALT -> modifiers.alt
-        KeyType.META -> modifiers.meta
-        KeyType.FN -> modifiers.fn
+        KeyType.ALT -> modifiers.altState(ModifierSide.fromKeyCode(key.keyCode))
+        KeyType.META -> modifiers.metaState(ModifierSide.fromKeyCode(key.keyCode))
+        KeyType.FN -> if (key.keyCode == KeyEvent.KEYCODE_FUNCTION) {
+            modifiers.fn
+        } else {
+            ModifierState.State.OFF
+        }
         KeyType.CAPS_LOCK -> if (modifiers.capsLock) ModifierState.State.LOCKED else ModifierState.State.OFF
         else -> ModifierState.State.OFF
     }
@@ -191,19 +209,23 @@ class KeyView(
 
     private var popupActive: Boolean = false
     private var longPressRunnable: Runnable? = null
+    private var longPressSuppressed = false
     private val prefs by lazy { KeyboardPrefs(context) }
 
+    /** Returns whether this key exposes a popup, trackpad, chooser, or action menu. */
     private fun canLongPress(): Boolean =
         key.popupChars != null || key.type == KeyType.SPACE ||
             key.type == KeyType.LANGUAGE_SWITCH ||
+            (key.type == KeyType.FN && key.keyCode == KeyEvent.KEYCODE_FUNCTION) ||
             key.code == Key.CODE_RIGHT_OF_SPACE
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 isDown = true
+                longPressSuppressed = false
                 listener?.onKeyDown(this)
-                if (canLongPress()) scheduleLongPress()
+                if (canLongPress() && !longPressSuppressed) scheduleLongPress()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -213,6 +235,7 @@ class KeyView(
                 return true
             }
             MotionEvent.ACTION_UP -> {
+                if (!isDown) return true
                 isDown = false
                 cancelLongPressTimer()
                 if (popupActive) {
@@ -253,6 +276,26 @@ class KeyView(
     private fun cancelLongPressTimer() {
         longPressRunnable?.let { removeCallbacks(it) }
         longPressRunnable = null
+    }
+
+    /** Suppresses menus and alternate characters once this touch participates in a chord. */
+    fun suppressLongPress() {
+        longPressSuppressed = true
+        cancelLongPressTimer()
+    }
+
+    /** Invalidates an unfinished touch without dispatching a key or leaving a delayed popup. */
+    fun cancelPendingTouch() {
+        isDown = false
+        popupActive = false
+        suppressLongPress()
+    }
+
+    /** Cancels delayed callbacks when a layout rebuild removes this key from its window. */
+    override fun onDetachedFromWindow() {
+        if (isDown) listener?.onKeyCancel(this)
+        cancelPendingTouch()
+        super.onDetachedFromWindow()
     }
 
     override fun performClick(): Boolean {

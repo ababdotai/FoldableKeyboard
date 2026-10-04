@@ -101,10 +101,10 @@ class UpdateChecker(private val context: Context) {
     }
 
     companion object {
-        private const val REPO = "9hm2/pcKeyboard"
+        private const val REPO = "ababdotai/FoldableKeyboard"
         private const val RELEASES_URL = "https://api.github.com/repos/$REPO/releases/latest"
         private const val REPO_RELEASES_URL = "https://github.com/$REPO/releases/latest"
-        private const val KEY_LAST_CHECK = "update_last_check_ms"
+        private const val KEY_LAST_CHECK = "update_last_check_ms_$REPO"
         private const val CHECK_INTERVAL_MS = 12L * 60 * 60 * 1000  // 12 hours
     }
 }

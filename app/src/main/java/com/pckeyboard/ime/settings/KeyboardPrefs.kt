@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.os.Build
 import androidx.preference.PreferenceManager
 import com.pckeyboard.ime.dispatch.DispatchMode
+import com.pckeyboard.ime.layout.KeyboardPlatform
 
 /**
  * User-tunable layout sizing: height scale (so the keyboard can grow / shrink
@@ -181,6 +182,34 @@ class KeyboardPrefs(context: Context) {
             prefs.edit().putString(KEY_DISPATCH_MODE, value.preferenceValue).apply()
         }
 
+    /** Controls whether shared modifier rows follow Windows or macOS conventions. */
+    var keyboardPlatform: KeyboardPlatform
+        get() = KeyboardPlatform.fromPreference(prefs.getString(KEY_KEYBOARD_PLATFORM, null))
+        set(value) {
+            prefs.edit().putString(KEY_KEYBOARD_PLATFORM, value.preferenceValue).apply()
+        }
+
+    /** Uses UU's Right Ctrl replacement for Command only in the Mac floating keyboard. */
+    var uuCommandCompatibility: Boolean
+        get() = prefs.getBoolean(KEY_UU_COMMAND_COMPATIBILITY, true)
+        set(value) { prefs.edit().putBoolean(KEY_UU_COMMAND_COMPATIBILITY, value).apply() }
+
+    /** Shows explicit remote commands only in the UU floating keyboard. */
+    var uuShortcutBar: Boolean
+        get() = prefs.getBoolean(KEY_UU_SHORTCUT_BAR, true)
+        set(value) { prefs.edit().putBoolean(KEY_UU_SHORTCUT_BAR, value).apply() }
+
+    /** Observes only remote layout settings and returns an explicit unsubscribe action. */
+    fun observeRemoteLayoutChanges(onChange: () -> Unit): () -> Unit {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key in setOf(KEY_UU_SHORTCUT_BAR, KEY_KEYBOARD_PLATFORM, KEY_UU_COMMAND_COMPATIBILITY)) {
+                onChange()
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     /**
      * Autocorrect behaviour:
      *  - [AUTOCORRECT_OFF]     — no suggestion bar, no corrections.
@@ -241,6 +270,9 @@ class KeyboardPrefs(context: Context) {
         private const val KEY_RIGHT_OF_SPACE = "kb_right_of_space_action"
         private const val KEY_TRACKPAD_SENS = "kb_trackpad_sensitivity"
         private const val KEY_DISPATCH_MODE = "kb_dispatch_mode"
+        private const val KEY_KEYBOARD_PLATFORM = "kb_keyboard_platform"
+        private const val KEY_UU_COMMAND_COMPATIBILITY = "kb_uu_command_compatibility"
+        private const val KEY_UU_SHORTCUT_BAR = "kb_uu_shortcut_bar"
         /** Weight of the big empty centre when sideSplit is on. */
         const val SIDE_SPLIT_GAP_WEIGHT = 5f
 

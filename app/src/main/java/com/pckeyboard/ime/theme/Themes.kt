@@ -4,46 +4,51 @@ import android.graphics.Color
 
 /**
  * Built-in themes shipped with the keyboard.
- * Following Samsung-style aesthetics with Material-You-leaning palettes.
+ * Magic palettes use physical white or black keycaps on a neutral metal chassis.
  */
 object Themes {
 
-    val LIGHT = KeyboardTheme(
+    val MAGIC = KeyboardTheme(
         id = "light",
-        name = "Light",
+        name = "Magic Keyboard",
         isDark = false,
-        backgroundColor       = Color.parseColor("#EEF1F6"),
-        keyBackgroundColor    = Color.parseColor("#FFFFFF"),
-        keyPressedColor       = Color.parseColor("#D6E2F5"),
-        keyTextColor          = Color.parseColor("#1A1C1E"),
-        secondaryTextColor    = Color.parseColor("#5A6068"),
-        modifierKeyColor      = Color.parseColor("#D9DEE6"),
-        modifierTextColor     = Color.parseColor("#1A1C1E"),
-        accentColor           = Color.parseColor("#1A73E8"),
+        backgroundColor       = Color.parseColor("#D8DBDE"),
+        keyBackgroundColor    = Color.parseColor("#FAFAF9"),
+        keyPressedColor       = Color.parseColor("#E3E5E6"),
+        keyTextColor          = Color.parseColor("#36383A"),
+        secondaryTextColor    = Color.parseColor("#595C60"),
+        modifierKeyColor      = Color.parseColor("#FAFAF9"),
+        modifierTextColor     = Color.parseColor("#36383A"),
+        accentColor           = Color.parseColor("#52575D"),
         accentTextColor       = Color.parseColor("#FFFFFF"),
-        dividerColor          = Color.parseColor("#C0C5CC"),
-        keyCornerRadiusDp = 10,
+        dividerColor          = Color.parseColor("#AEB3B8"),
+        keyCornerRadiusDp = 4,
         keyElevationDp = 1,
-        keySpacingDp = 3
+        keySpacingDp = 6,
+        keyStyle = KeyStyle.MAGIC,
     )
+
+    /** Retains the existing preference ID and source references for the light theme. */
+    val LIGHT = MAGIC
 
     val DARK = KeyboardTheme(
         id = "dark",
-        name = "Dark",
+        name = "Magic Keyboard (Black)",
         isDark = true,
-        backgroundColor       = Color.parseColor("#1F2125"),
-        keyBackgroundColor    = Color.parseColor("#33373D"),
-        keyPressedColor       = Color.parseColor("#4A5160"),
-        keyTextColor          = Color.parseColor("#F2F4F7"),
-        secondaryTextColor    = Color.parseColor("#B4B9C2"),
-        modifierKeyColor      = Color.parseColor("#262A30"),
-        modifierTextColor     = Color.parseColor("#E8EBEF"),
-        accentColor           = Color.parseColor("#8AB4F8"),
-        accentTextColor       = Color.parseColor("#1F2125"),
-        dividerColor          = Color.parseColor("#3A3E45"),
-        keyCornerRadiusDp = 10,
-        keyElevationDp = 0,
-        keySpacingDp = 3
+        backgroundColor       = Color.parseColor("#56585A"),
+        keyBackgroundColor    = Color.parseColor("#202123"),
+        keyPressedColor       = Color.parseColor("#383A3C"),
+        keyTextColor          = Color.parseColor("#F4F4F2"),
+        secondaryTextColor    = Color.parseColor("#CACCCD"),
+        modifierKeyColor      = Color.parseColor("#202123"),
+        modifierTextColor     = Color.parseColor("#F4F4F2"),
+        accentColor           = Color.parseColor("#D9DBDD"),
+        accentTextColor       = Color.parseColor("#202123"),
+        dividerColor          = Color.parseColor("#131415"),
+        keyCornerRadiusDp = 4,
+        keyElevationDp = 1,
+        keySpacingDp = 6,
+        keyStyle = KeyStyle.MAGIC,
     )
 
     val BLACK = KeyboardTheme(
@@ -65,5 +70,5 @@ object Themes {
         keySpacingDp = 3
     )
 
-    val builtIn: List<KeyboardTheme> = listOf(LIGHT, DARK, BLACK)
+    val builtIn: List<KeyboardTheme> = listOf(MAGIC, DARK, BLACK)
 }

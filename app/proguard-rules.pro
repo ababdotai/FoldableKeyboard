@@ -1,6 +1,9 @@
 -keep class com.pckeyboard.ime.** { *; }
 -keepclassmembers class * extends android.inputmethodservice.InputMethodService { *; }
 
+# Shizuku constructs the privileged input service by class name in a separate process.
+-keep class com.pckeyboard.ime.remote.SystemInputService { *; }
+
 # Lucene's Hunspell: loaded via straight API calls, no reflection on our
 # side, but keep the hunspell package intact and silence warnings about
 # optional / newer-JDK codepaths lucene-core references but never touches

@@ -12,6 +12,7 @@ import com.pckeyboard.ime.R
 import com.pckeyboard.ime.databinding.ActivitySettingsBinding
 import com.pckeyboard.ime.dispatch.DispatchMode
 import com.pckeyboard.ime.editor.ThemeEditorActivity
+import com.pckeyboard.ime.layout.KeyboardPlatform
 import com.pckeyboard.ime.theme.KeyboardTheme
 import com.pckeyboard.ime.theme.ThemeRepository
 import com.pckeyboard.ime.updater.UpdateScheduler
@@ -27,6 +28,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var repo: ThemeRepository
     private lateinit var prefs: KeyboardPrefs
     private lateinit var adapter: ThemeAdapter
+    private var uuKeyboardSetup: UuKeyboardSetupController? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -90,7 +92,9 @@ class SettingsActivity : AppCompatActivity() {
         wireAutoUpdate()
 
         wireDispatchMode()
+        uuKeyboardSetup = UuKeyboardSetupController(this, binding.root)
         wireSizingControls()
+        wireKeyboardPlatform()
         buildLanguageList()
         // Silent background auto-check too — same throttle as SetupActivity.
         UpdateUi.runAutoCheck(this)
@@ -111,7 +115,13 @@ class SettingsActivity : AppCompatActivity() {
                 gravity = android.view.Gravity.CENTER_VERTICAL
             }
             val label = android.widget.TextView(this).apply {
-                text = pack.displayName
+                text = when (pack.id) {
+                    "en_US" -> getString(R.string.subtype_en_us)
+                    "hu_HU" -> getString(R.string.subtype_hu_hu)
+                    "de_DE" -> getString(R.string.subtype_de_de)
+                    "es_ES" -> getString(R.string.subtype_es_es)
+                    else -> pack.displayName
+                }
                 layoutParams = android.widget.LinearLayout.LayoutParams(
                     0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
                 )
@@ -148,6 +158,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun wireAutoUpdate() {
         binding.autoUpdateSwitch.isChecked = prefs.autoUpdateEnabled
         binding.intervalContainer.alpha = if (prefs.autoUpdateEnabled) 1f else 0.5f
+        updateIntervalEnabled(prefs.autoUpdateEnabled)
         binding.intervalToggle.check(
             if (prefs.autoUpdateIntervalHours == 12) R.id.interval12h else R.id.interval24h
         )
@@ -155,6 +166,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.autoUpdateSwitch.setOnCheckedChangeListener { _, checked ->
             prefs.autoUpdateEnabled = checked
             binding.intervalContainer.alpha = if (checked) 1f else 0.5f
+            updateIntervalEnabled(checked)
             UpdateScheduler.schedule(this, replace = true)
         }
         binding.intervalToggle.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -186,9 +198,58 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    /** Disables interval controls while automatic update checks are disabled. */
+    private fun updateIntervalEnabled(enabled: Boolean) {
+        for (index in 0 until binding.intervalToggle.childCount) {
+            binding.intervalToggle.getChildAt(index).isEnabled = enabled
+        }
+    }
+
+    /** Initializes the desktop layout selector and its dependent Win-only preference. */
+    private fun wireKeyboardPlatform() {
+        binding.keyboardPlatformGroup.check(
+            if (prefs.keyboardPlatform == KeyboardPlatform.MAC) {
+                R.id.keyboardPlatformMac
+            } else {
+                R.id.keyboardPlatformWin
+            },
+        )
+        updateRightOfSpaceEnabled(prefs.keyboardPlatform)
+        binding.keyboardPlatformGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val platform = if (checkedId == R.id.keyboardPlatformMac) {
+                KeyboardPlatform.MAC
+            } else {
+                KeyboardPlatform.WIN
+            }
+            prefs.keyboardPlatform = platform
+            updateRightOfSpaceEnabled(platform)
+        }
+    }
+
+    /** Visually disables the Win-only right-of-Space choice while Mac layout is selected. */
+    private fun updateRightOfSpaceEnabled(platform: KeyboardPlatform) {
+        val enabled = platform == KeyboardPlatform.WIN
+        val alpha = if (enabled) 1f else 0.45f
+        binding.rightOfSpaceTitle.alpha = alpha
+        binding.rightOfSpaceHint.alpha = alpha
+        binding.rightOfSpaceGroup.alpha = alpha
+        for (index in 0 until binding.rightOfSpaceGroup.childCount) {
+            binding.rightOfSpaceGroup.getChildAt(index).isEnabled = enabled
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        uuKeyboardSetup?.refresh()
         reload()
+    }
+
+    /** Removes optional Shizuku listeners with the settings screen. */
+    override fun onDestroy() {
+        uuKeyboardSetup?.close()
+        uuKeyboardSetup = null
+        super.onDestroy()
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -260,11 +321,11 @@ class SettingsActivity : AppCompatActivity() {
 
         // Long-press delay: 150–1000 ms, slider in 10 ms steps (0..85 → +150).
         binding.longPressSlider.progress = (prefs.longPressDelayMs - 150) / 10
-        binding.longPressValue.text = "${prefs.longPressDelayMs} ms"
+        binding.longPressValue.text = getString(R.string.settings_delay_ms, prefs.longPressDelayMs)
         binding.longPressSlider.setOnSeekBarChangeListener(simpleSeek { p ->
             val v = 150 + p * 10
             prefs.longPressDelayMs = v
-            binding.longPressValue.text = "$v ms"
+            binding.longPressValue.text = getString(R.string.settings_delay_ms, v)
         })
 
         // Trackpad sensitivity: 0.3–3.0×, slider in 0.1× steps (0..27 → +0.3).

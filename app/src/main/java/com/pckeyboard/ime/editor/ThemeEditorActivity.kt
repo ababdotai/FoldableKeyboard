@@ -6,6 +6,7 @@ import android.text.TextWatcher
 import android.widget.SeekBar
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import com.pckeyboard.ime.R
 import com.pckeyboard.ime.databinding.ActivityThemeEditorBinding
 import com.pckeyboard.ime.layout.EnglishLayout
 import com.pckeyboard.ime.settings.addSystemBarBottomEndMargin
@@ -42,13 +43,13 @@ class ThemeEditorActivity : AppCompatActivity() {
             editingExistingId = incomingId
             repo.getThemeById(incomingId)!!.copy()
         } else {
-            Themes.DARK.copy(id = "custom_${UUID.randomUUID().toString().take(8)}", name = "My Theme")
+            Themes.DARK.copy(id = "custom_${UUID.randomUUID().toString().take(8)}", name = getString(R.string.theme_default_name))
         }
 
         binding.nameInput.setText(working.name)
         binding.nameInput.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
-                working = working.copy(name = s?.toString().orEmpty().ifBlank { "My Theme" })
+                working = working.copy(name = s?.toString().orEmpty().ifBlank { getString(R.string.theme_default_name) })
             }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}

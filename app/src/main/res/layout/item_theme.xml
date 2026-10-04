@@ -65,6 +65,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnEdit"
+            android:contentDescription="@string/theme_edit"
             style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -74,6 +75,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnDelete"
+            android:contentDescription="@string/theme_delete"
             style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

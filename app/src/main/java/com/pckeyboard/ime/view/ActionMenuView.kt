@@ -200,6 +200,8 @@ sealed class MenuAction {
     data class SwitchLanguage(val packId: String) : MenuAction()
     /** Show the emoji picker overlay. */
     object OpenEmoji : MenuAction()
+    /** Switch the visible keyboard to its symbols page. */
+    object OpenSymbols : MenuAction()
     /** Show the clipboard manager overlay. */
     object OpenClipboard : MenuAction()
     /** Launch the keyboard's Settings activity. */

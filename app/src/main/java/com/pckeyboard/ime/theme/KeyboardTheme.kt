@@ -2,6 +2,9 @@ package com.pckeyboard.ime.theme
 
 import android.graphics.Color
 
+/** Selects the visual renderer without changing key behavior or layout. */
+enum class KeyStyle { CLASSIC, MAGIC }
+
 /**
  * A keyboard theme. Defines the colors used by the renderer.
  * Custom themes built in the Theme Editor are stored as instances of this
@@ -24,8 +27,10 @@ data class KeyboardTheme(
     val dividerColor: Int,
     val keyCornerRadiusDp: Int = 8,
     val keyElevationDp: Int = 1,
-    val keySpacingDp: Int = 3
+    val keySpacingDp: Int = 3,
+    val keyStyle: KeyStyle = KeyStyle.CLASSIC,
 ) {
+    /** Serializes the palette and renderer for custom theme persistence. */
     fun toMap(): Map<String, String> = mapOf(
         "id" to id,
         "name" to name,
@@ -42,10 +47,12 @@ data class KeyboardTheme(
         "dividerColor" to dividerColor.toString(),
         "keyCornerRadiusDp" to keyCornerRadiusDp.toString(),
         "keyElevationDp" to keyElevationDp.toString(),
-        "keySpacingDp" to keySpacingDp.toString()
+        "keySpacingDp" to keySpacingDp.toString(),
+        "keyStyle" to keyStyle.name,
     )
 
     companion object {
+        /** Reads older themes with the classic renderer when no known style is stored. */
         fun fromMap(map: Map<String, String>): KeyboardTheme = KeyboardTheme(
             id = map["id"] ?: "custom",
             name = map["name"] ?: "Custom",
@@ -62,7 +69,9 @@ data class KeyboardTheme(
             dividerColor = map["dividerColor"]?.toInt() ?: Color.GRAY,
             keyCornerRadiusDp = map["keyCornerRadiusDp"]?.toInt() ?: 8,
             keyElevationDp = map["keyElevationDp"]?.toInt() ?: 1,
-            keySpacingDp = map["keySpacingDp"]?.toInt() ?: 3
+            keySpacingDp = map["keySpacingDp"]?.toInt() ?: 3,
+            keyStyle = KeyStyle.entries.firstOrNull { it.name == map["keyStyle"] }
+                ?: KeyStyle.CLASSIC,
         )
     }
 }

@@ -42,6 +42,18 @@ class ThemeRepository(context: Context) {
         prefs.edit().putString(KEY_SELECTED, id).apply()
     }
 
+    /** Keeps visible keyboard chrome in sync and returns a strongly retained unsubscribe action. */
+    fun observeSelectedTheme(onChange: () -> Unit): () -> Unit {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            val selected = prefs.getString(KEY_SELECTED, Themes.LIGHT.id)
+            if (key == null || key == KEY_SELECTED || key.startsWith("$KEY_PREFIX${selected}_")) {
+                onChange()
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     fun getThemeById(id: String): KeyboardTheme? {
         val builtIn = Themes.builtIn.firstOrNull { it.id == id }
         if (builtIn != null) return builtIn

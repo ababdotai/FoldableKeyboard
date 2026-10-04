@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.pckeyboard.ime.databinding.ItemThemeBinding
+import com.pckeyboard.ime.R
 import com.pckeyboard.ime.theme.KeyboardTheme
 import com.pckeyboard.ime.theme.Themes
 
@@ -35,8 +36,13 @@ class ThemeAdapter(
 
     inner class VH(private val b: ItemThemeBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(t: KeyboardTheme) {
-            b.themeName.text = t.name
-            b.themeSubtitle.text = if (t.isDark) "Dark" else "Light"
+            b.themeName.text = when (t.id) {
+                "light" -> b.root.context.getString(R.string.theme_magic_light)
+                "dark" -> b.root.context.getString(R.string.theme_magic_dark)
+                "black" -> b.root.context.getString(R.string.theme_amoled)
+                else -> t.name
+            }
+            b.themeSubtitle.setText(if (t.isDark) R.string.theme_dark else R.string.theme_light)
             b.swatchBackground.setBackgroundColor(t.backgroundColor)
             b.swatchKey.setBackgroundColor(t.keyBackgroundColor)
             b.swatchModifier.setBackgroundColor(t.modifierKeyColor)

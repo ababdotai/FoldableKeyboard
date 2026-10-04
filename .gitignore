@@ -16,3 +16,6 @@ local.properties
 # so every build machine signs debug APKs identically; the release keystore
 # is private and must be supplied at build time via env vars.
 !app/debug.keystore
+
+# Local downloads and investigation artifacts are not project sources.
+/temp/

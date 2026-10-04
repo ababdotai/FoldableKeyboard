@@ -9,6 +9,39 @@ import org.junit.Test
 /** Verifies raw shortcut event ordering without Android framework event construction. */
 class RawKeyDispatcherTest {
 
+    /** Preserves both sides and their shared generic bit until the final side is released. */
+    @Test
+    fun plansBothSidesOfEveryModifierWithoutPrematureRelease() {
+        val modifiers = listOf(
+            listOf(KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT, KeyEvent.META_SHIFT_ON,
+                KeyEvent.META_SHIFT_LEFT_ON, KeyEvent.META_SHIFT_RIGHT_ON),
+            listOf(KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent.KEYCODE_CTRL_RIGHT, KeyEvent.META_CTRL_ON,
+                KeyEvent.META_CTRL_LEFT_ON, KeyEvent.META_CTRL_RIGHT_ON),
+            listOf(KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.KEYCODE_ALT_RIGHT, KeyEvent.META_ALT_ON,
+                KeyEvent.META_ALT_LEFT_ON, KeyEvent.META_ALT_RIGHT_ON),
+            listOf(KeyEvent.KEYCODE_META_LEFT, KeyEvent.KEYCODE_META_RIGHT, KeyEvent.META_META_ON,
+                KeyEvent.META_META_LEFT_ON, KeyEvent.META_META_RIGHT_ON),
+        )
+        for ((leftCode, rightCode, generic, leftBit, rightBit) in modifiers) {
+            val leftMeta = generic or leftBit
+            val bothMeta = leftMeta or rightBit
+            val plan = rawKeyEventPlan(KeyEvent.KEYCODE_F, bothMeta)
+            assertEquals(listOf(leftCode, rightCode, KeyEvent.KEYCODE_F, KeyEvent.KEYCODE_F, rightCode, leftCode),
+                plan.map { it.keyCode })
+            assertEquals(listOf(leftMeta, bothMeta, bothMeta, bothMeta, leftMeta, 0), plan.map { it.metaState })
+        }
+    }
+
+    /** Verifies raw remote events are not tagged as soft-keyboard text input. */
+    @Test
+    fun usesHardwareCompatibleRemoteFlags() {
+        assertEquals(0, RAW_REMOTE_EVENT_FLAGS and KeyEvent.FLAG_SOFT_KEYBOARD)
+        assertEquals(
+            KeyEvent.FLAG_KEEP_TOUCH_MODE,
+            RAW_REMOTE_EVENT_FLAGS and KeyEvent.FLAG_KEEP_TOUCH_MODE,
+        )
+    }
+
     /** Verifies Command+C is framed by a physical Meta press and release. */
     @Test
     fun plansMetaCShortcut() {
@@ -83,6 +116,42 @@ class RawKeyDispatcherTest {
                 0,
             ),
             plan.map { it.metaState },
+        )
+    }
+
+    /** Verifies Fn is expanded into a physical Function-key frame around the requested key. */
+    @Test
+    fun plansFunctionModifierShortcut() {
+        val metaState = KeyEvent.META_FUNCTION_ON
+
+        assertEquals(
+            listOf(
+                RawKeyEventSpec(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_FUNCTION, metaState),
+                RawKeyEventSpec(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_F1, metaState),
+                RawKeyEventSpec(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_F1, metaState),
+                RawKeyEventSpec(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_FUNCTION, 0),
+            ),
+            rawKeyEventPlan(KeyEvent.KEYCODE_F1, metaState),
+        )
+    }
+
+    /** Verifies right Alt and right Meta produce right-sided physical modifier events. */
+    @Test
+    fun plansRightSidedAltMetaShortcut() {
+        val altMeta = KeyEvent.META_ALT_ON or KeyEvent.META_ALT_RIGHT_ON or
+            KeyEvent.META_META_ON or KeyEvent.META_META_RIGHT_ON
+        val altOnly = KeyEvent.META_ALT_ON or KeyEvent.META_ALT_RIGHT_ON
+
+        assertEquals(
+            listOf(
+                RawKeyEventSpec(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ALT_RIGHT, altOnly),
+                RawKeyEventSpec(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_META_RIGHT, altMeta),
+                RawKeyEventSpec(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_K, altMeta),
+                RawKeyEventSpec(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_K, altMeta),
+                RawKeyEventSpec(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_META_RIGHT, altOnly),
+                RawKeyEventSpec(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ALT_RIGHT, 0),
+            ),
+            rawKeyEventPlan(KeyEvent.KEYCODE_K, altMeta),
         )
     }
 

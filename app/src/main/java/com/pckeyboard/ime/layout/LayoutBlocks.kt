@@ -11,23 +11,21 @@ import com.pckeyboard.ime.model.LayoutMode
  *
  * Structure follows the AOSP "Hacker's Keyboard" kbd_full.xml conventions
  * for a desktop-faithful 6-row layout:
- *  - Row 0 (Fn extension): Esc + F1-F12 + Home + End
+ *  - Row 0 (Fn extension): Esc + F1-F12 + desktop-specific navigation
  *  - Row 1 (Numbers):      ` 1-0 - = ⌫
  *  - Row 2 (Top letters):  Tab + q-p + [ ] \             (locale-specific)
  *  - Row 3 (Home letters): Caps + a-l + ... + Enter      (locale-specific)
  *  - Row 4 (Bottom):       ⇧ + < + z-m + , . / + ↑ + ⇧  (locale-specific)
- *  - Row 5 (Control):      Ctrl 🌐 Alt Space 123 ◀ ▼ ▶
+ *  - Row 5 (Control):      Win or Mac desktop controls
  *
  * Every row totals weight 14 so a "1-unit" key is the same width in any
- * row. The control row's ▼ at cumulative weight 12.5 sits directly under
- * the bottom letter row's ▲ (also at 12.5), forming a real inverted-T
- * arrow cluster — same shape Hacker's Keyboard uses. There is no right
- * Ctrl: dropping it is what keeps the row at 14 instead of 15.
+ * row. The control-row ▼ sits directly under the bottom letter row's ▲,
+ * preserving the conventional inverted-T arrow cluster on both platforms.
  */
 internal object LayoutBlocks {
 
-    /** Builds the complete 15-key PC function row while preserving its total weight of 14. */
-    fun fnRow(): List<Key> = listOf(
+    /** Builds the complete function row for [platform] with a total weight of 14. */
+    fun fnRow(platform: KeyboardPlatform = KeyboardPlatform.WIN): List<Key> = listOf(
         Key.fn("Esc",  KeyType.ESC, KeyEvent.KEYCODE_ESCAPE),
         Key.fn("F1",   KeyType.FN, KeyEvent.KEYCODE_F1),
         Key.fn("F2",   KeyType.FN, KeyEvent.KEYCODE_F2),
@@ -41,8 +39,16 @@ internal object LayoutBlocks {
         Key.fn("F10",  KeyType.FN, KeyEvent.KEYCODE_F10),
         Key.fn("F11",  KeyType.FN, KeyEvent.KEYCODE_F11),
         Key.fn("F12",  KeyType.FN, KeyEvent.KEYCODE_F12),
-        Key.fn("Home", KeyType.HOME),
-        Key.fn("End",  KeyType.END)
+        if (platform == KeyboardPlatform.MAC) {
+            Key.fn("PageUp", KeyType.PAGE_UP, KeyEvent.KEYCODE_PAGE_UP)
+        } else {
+            Key.fn("Home", KeyType.HOME, KeyEvent.KEYCODE_MOVE_HOME)
+        },
+        if (platform == KeyboardPlatform.MAC) {
+            Key.fn("PageDn", KeyType.PAGE_DOWN, KeyEvent.KEYCODE_PAGE_DOWN)
+        } else {
+            Key.fn("End", KeyType.END, KeyEvent.KEYCODE_MOVE_END)
+        }
     ).map { it.copy(widthWeight = FN_ROW_KEY_WEIGHT) }
 
     fun numberRow(): List<Key> = listOf(
@@ -62,29 +68,52 @@ internal object LayoutBlocks {
         Key.fn("⌫", KeyType.BACKSPACE, KeyEvent.KEYCODE_DEL, weight = 1.8f, repeatable = true)
     )
 
-    /**
-     * Bottom-bottom row. Total weight = 14 so columns line up with every
-     * other row; the centre of ▼ at 12.5 / 14 sits directly under the
-     * bottom letter row's ▲ at the same column, forming a real
-     * inverted-T arrow cluster (same shape Hacker's Keyboard uses).
-     *
-     * No right Ctrl on this row — adding one would push the total to 15
-     * and shift ▼ out from under ▲. Left Ctrl alone is enough to put a
-     * Ctrl below the left Shift, which is what was requested.
-     */
-    fun controlRow(): List<Key> = listOf(
-        // Win is intentionally absent — its weight is redistributed
-        // equally to Ctrl, the language switcher and Alt so the cluster
-        // grows into the vacated space instead of leaving a hole.
-        Key.fn("Ctrl",  KeyType.CTRL, sticky = true, weight = 4f / 3f),
-        Key.fn("🌐",   KeyType.LANGUAGE_SWITCH, weight = 4f / 3f),
-        Key.fn("Alt",   KeyType.ALT,  sticky = true, weight = 4f / 3f),
-        Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 6.0f),
-        Key.fn("123",   KeyType.SYMBOL_SWITCH, weight = 1.0f),
-        Key.fn("◀",    KeyType.ARROW_LEFT,  KeyEvent.KEYCODE_DPAD_LEFT,  repeatable = true),
-        Key.fn("▼",    KeyType.ARROW_DOWN,  KeyEvent.KEYCODE_DPAD_DOWN,  repeatable = true),
-        Key.fn("▶",    KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true)
-    )
+    /** Builds a 14-unit control row following the selected desktop convention. */
+    fun controlRow(platform: KeyboardPlatform = KeyboardPlatform.WIN): List<Key> =
+        if (platform == KeyboardPlatform.MAC) {
+            listOf(
+                Key.fn("fn", KeyType.FN, KeyEvent.KEYCODE_FUNCTION, sticky = true),
+                Key.fn("⌃", KeyType.CTRL, sticky = true),
+                Key.fn("⌥", KeyType.ALT, KeyEvent.KEYCODE_ALT_LEFT, sticky = true),
+                Key.fn("⌘", KeyType.META, KeyEvent.KEYCODE_META_LEFT, sticky = true),
+                Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 5f),
+                Key.fn("⌘", KeyType.META, KeyEvent.KEYCODE_META_RIGHT, sticky = true),
+                Key.fn("⌥", KeyType.ALT, KeyEvent.KEYCODE_ALT_RIGHT, sticky = true),
+                Key.fn("←", KeyType.ARROW_LEFT, KeyEvent.KEYCODE_DPAD_LEFT, repeatable = true),
+                Key.fn("↓", KeyType.ARROW_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, repeatable = true),
+                Key.fn("→", KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true),
+            )
+        } else {
+            listOf(
+                // Win is intentionally absent — its weight is redistributed
+                // equally to Ctrl, the language switcher and Alt so the cluster
+                // grows into the vacated space instead of leaving a hole.
+                Key.fn("Ctrl", KeyType.CTRL, sticky = true, weight = 4f / 3f),
+                Key.fn("🌐", KeyType.LANGUAGE_SWITCH, weight = 4f / 3f),
+                Key.fn("Alt", KeyType.ALT, sticky = true, weight = 4f / 3f),
+                Key.fn("space", KeyType.SPACE, KeyEvent.KEYCODE_SPACE, weight = 6f),
+                Key.fn("123", KeyType.SYMBOL_SWITCH, weight = 1f),
+                Key.fn("◀", KeyType.ARROW_LEFT, KeyEvent.KEYCODE_DPAD_LEFT, repeatable = true),
+                Key.fn("▼", KeyType.ARROW_DOWN, KeyEvent.KEYCODE_DPAD_DOWN, repeatable = true),
+                Key.fn("▶", KeyType.ARROW_RIGHT, KeyEvent.KEYCODE_DPAD_RIGHT, repeatable = true),
+            )
+        }
+
+    /** Applies Mac-specific shared rows while retaining locale character keys. */
+    fun applyPlatform(
+        layout: KeyboardLayout,
+        platform: KeyboardPlatform,
+    ): KeyboardLayout {
+        if (layout.mode != LayoutMode.MAIN || platform == KeyboardPlatform.WIN) return layout
+        val rows = layout.rows.toMutableList()
+        if (rows.firstOrNull()?.any { it.type == KeyType.FN && it.label.startsWith("F") } == true) {
+            rows[0] = fnRow(platform)
+        }
+        if (rows.size >= 2) {
+            rows[rows.lastIndex] = controlRow(platform)
+        }
+        return layout.copy(rows = rows)
+    }
 
     fun symbols(): KeyboardLayout = KeyboardLayout(
         id = "sym",

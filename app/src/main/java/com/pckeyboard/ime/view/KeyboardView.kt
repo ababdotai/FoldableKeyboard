@@ -1,21 +1,28 @@
 package com.pckeyboard.ime.view
 
 import android.content.Context
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.HapticFeedbackConstants
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import androidx.core.graphics.ColorUtils
 import com.pckeyboard.ime.model.Key
 import com.pckeyboard.ime.model.KeyType
 import com.pckeyboard.ime.model.KeyboardLayout
+import com.pckeyboard.ime.model.ModifierSide
 import com.pckeyboard.ime.model.ModifierState
 import com.pckeyboard.ime.settings.KeyboardPrefs
 import com.pckeyboard.ime.theme.KeyboardTheme
+import com.pckeyboard.ime.theme.KeyStyle
 
 /**
  * Renders a KeyboardLayout. A vertical [rowsContainer] holds the rows of
@@ -34,6 +41,9 @@ class KeyboardView @JvmOverloads constructor(
     private val modifiers = ModifierState()
     private val handler = Handler(Looper.getMainLooper())
     private val repeatRunnables = mutableMapOf<KeyView, Runnable>()
+    private val pressedKeys = mutableSetOf<KeyView>()
+    private val keyModifiers = mutableMapOf<KeyView, ModifierState>()
+    private val repeatedKeys = mutableSetOf<KeyView>()
     private val prefs = KeyboardPrefs(context)
 
     private val rowsContainer = LinearLayout(context).apply {
@@ -55,6 +65,7 @@ class KeyboardView @JvmOverloads constructor(
     // so the app keeps fitting above the keys (not above the empty zone).
     // This is the same trick FlorisBoard uses.
     private var popupView: KeyPopupView? = null
+    private var popupZoneHeightDp = POPUP_ZONE_DP
 
     /** Transparent reserved area at the top of [mainContainer] where the
      *  long-press popup can draw without being clipped — the IME's
@@ -105,7 +116,7 @@ class KeyboardView @JvmOverloads constructor(
         mainContainer.addView(
             popupZone,
             LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(POPUP_ZONE_DP)
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(popupZoneHeightDp)
             )
         )
         mainContainer.addView(
@@ -120,6 +131,14 @@ class KeyboardView @JvmOverloads constructor(
         )
     }
 
+    /** Removes IME-only headroom in floating windows; popups remain clamped inside the view. */
+    fun setCompactOverlayMode() {
+        resetModifiers()
+        popupZoneHeightDp = 0f
+        popupZone.layoutParams = popupZone.layoutParams.apply { height = 0 }
+        requestLayout()
+    }
+
     fun bind(layout: KeyboardLayout, theme: KeyboardTheme) {
         this.layoutData = layout
         this.theme = theme
@@ -127,10 +146,7 @@ class KeyboardView @JvmOverloads constructor(
         // behind the IME. The opaque keyboard background is moved to
         // rowsContainer so the keys still have a solid backdrop and the
         // gaps between keys aren't see-through.
-        setBackgroundColor(0)
-        rowsContainer.setBackgroundColor(
-            if (prefs.sideSplitEnabled) 0 else theme.backgroundColor
-        )
+        applyKeyboardSurface(theme)
         rebuild()
         requestLayout()
     }
@@ -149,7 +165,7 @@ class KeyboardView @JvmOverloads constructor(
             //    so the app doesn't push above this empty zone).
             //  + dp(SEARCH_HEADER_DP) when the emoji search bar is up,
             //    so the keyboard rows keep their normal size.
-            val extra = dp(POPUP_ZONE_DP) +
+            val extra = dp(popupZoneHeightDp) +
                 (if (emojiSearchHeader != null) dp(SEARCH_HEADER_DP) else 0) +
                 (if (suggestionBar != null) dp(SuggestionBarView.BAR_DP) else 0)
             val targetHeight = (base * prefs.heightScale).toInt() + extra
@@ -168,21 +184,56 @@ class KeyboardView @JvmOverloads constructor(
         requestLayout()
     }
 
+    /** Recolors keycaps and chassis while keeping the popup reservation transparent. */
     fun updateTheme(theme: KeyboardTheme) {
         this.theme = theme
-        setBackgroundColor(theme.backgroundColor)
+        applyKeyboardSurface(theme)
+        applyKeyboardBezel(theme)
         forEachKeyView { kv ->
             kv.theme = theme
             kv.invalidate()
         }
+        requestLayout()
+    }
+
+    /** Draws a quiet silver chassis only underneath keys, never over the app-visible popup area. */
+    private fun applyKeyboardSurface(theme: KeyboardTheme) {
+        setBackgroundColor(Color.TRANSPARENT)
+        rowsContainer.background = when {
+            prefs.sideSplitEnabled -> ColorDrawable(Color.TRANSPARENT)
+            theme.keyStyle == KeyStyle.MAGIC -> GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(
+                    ColorUtils.blendARGB(theme.backgroundColor, Color.WHITE, 0.10f),
+                    ColorUtils.blendARGB(theme.backgroundColor, Color.BLACK, 0.025f),
+                ),
+            ).apply { cornerRadius = dp(6f).toFloat() }
+            else -> ColorDrawable(theme.backgroundColor)
+        }
+    }
+
+    /** Adds a narrow physical-keyboard bezel without changing row weights or touch targets. */
+    private fun applyKeyboardBezel(theme: KeyboardTheme) {
+        val side = (resources.displayMetrics.widthPixels * prefs.horizontalPadding).toInt()
+        val bezel = if (theme.keyStyle == KeyStyle.MAGIC) dp(4f) else 0
+        rowsContainer.setPadding(side + bezel, bezel, side + bezel, bezel)
     }
 
     /** Clears any ONCE / LOCKED state on every modifier (Shift, Ctrl,
      *  Alt, Caps, …). Called from the IME service on input dismiss so
      *  the next session starts fresh. */
     fun resetModifiers() {
+        cancelPendingInput()
         modifiers.reset()
         refresh()
+    }
+
+    /** Cancels held gestures and transient UI before a separate explicit remote command. */
+    fun cancelInteractionsForShortcut() {
+        resetModifiers()
+        endTrackpad()
+        dismissActionMenu()
+        dismissPopup()
     }
 
     fun refresh() {
@@ -190,15 +241,13 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     private fun rebuild() {
+        resetModifiers()
         rowsContainer.removeAllViews()
         val layout = layoutData ?: return
         val theme = theme ?: return
-        val spacing = dp(theme.keySpacingDp.toFloat())
-
         val widthDp = (resources.displayMetrics.widthPixels /
                 resources.displayMetrics.density).toInt()
-        val side = (resources.displayMetrics.widthPixels * prefs.horizontalPadding).toInt()
-        rowsContainer.setPadding(side, 0, side, 0)
+        applyKeyboardBezel(theme)
 
         if (prefs.sideSplitEnabled) {
             buildSideSplitRows(layout, theme)
@@ -352,9 +401,8 @@ class KeyboardView @JvmOverloads constructor(
         val gapWeight = KeyboardPrefs.SIDE_SPLIT_GAP_WEIGHT
         val totalWeight = originalTotal + gapWeight
 
-        val side = (resources.displayMetrics.widthPixels * prefs.horizontalPadding).toInt()
-        val innerLeft = side
-        val innerWidth = width - 2 * side
+        val innerLeft = rowsContainer.paddingLeft
+        val innerWidth = width - rowsContainer.paddingLeft - rowsContainer.paddingRight
 
         val leftKeysWidth = (originalTotal / 2f / totalWeight * innerWidth).toInt()
         val gapWidth = (gapWeight / totalWeight * innerWidth).toInt()
@@ -381,20 +429,44 @@ class KeyboardView @JvmOverloads constructor(
 
     override fun onKeyDown(view: KeyView) {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        pressedKeys.add(view)
+        if (modifiers.pressModifier(view.key)) {
+            refresh()
+            return
+        }
+        val chord = modifiers.snapshot()
+        keyModifiers[view] = chord
+        // Reserve one-shot modifiers for this key before another pointer can capture them.
+        if (view.key.type != KeyType.CAPS_LOCK && view.key.type != KeyType.LANGUAGE_SWITCH) {
+            modifiers.consumeAfterChar()
+        }
+        // Fn and Space keep their menus when tapped alone, but never during a shortcut.
+        if (chord.shouldSendAsKeyEvent() || chord.isShiftModifierActive()) {
+            pressedKeys.forEach { it.suppressLongPress() }
+        }
         if (view.key.repeatable) startRepeat(view)
+        refresh()
     }
 
     override fun onKeyUp(view: KeyView) {
         stopRepeat(view)
-        handleKey(view.key)
+        if (!pressedKeys.remove(view)) return
+        if (modifiers.releaseModifier(view.key)) {
+            refresh()
+            return
+        }
+        val chord = keyModifiers.remove(view) ?: modifiers
+        if (!repeatedKeys.remove(view)) handleKey(view.key, chord)
     }
 
     override fun onKeyCancel(view: KeyView) {
-        stopRepeat(view)
+        resetModifiers()
     }
 
+    /** Opens the long-press surface assigned to the pressed key. */
     override fun onKeyLongPress(view: KeyView) {
         stopRepeat(view)
+        modifiers.releaseModifier(view.key, cancelled = true)
         // The configurable right-of-Space slot opens its chooser no matter
         // what it's currently assigned to (123 / emoji / Alt).
         if (view.key.code == Key.CODE_RIGHT_OF_SPACE) {
@@ -408,6 +480,10 @@ class KeyboardView @JvmOverloads constructor(
                 view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             }
             KeyType.LANGUAGE_SWITCH -> {
+                showActionMenu(view)
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            }
+            KeyType.FN -> if (view.key.keyCode == KeyEvent.KEYCODE_FUNCTION) {
                 showActionMenu(view)
                 view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             }
@@ -437,6 +513,8 @@ class KeyboardView @JvmOverloads constructor(
     }
 
     override fun onKeyPopupRelease(view: KeyView) {
+        pressedKeys.remove(view)
+        val chord = keyModifiers.remove(view) ?: modifiers
         if (trackpadActive) {
             // Don't commit Space whether the user armed the trackpad or
             // not — long-press alone is intent enough to suppress the
@@ -464,14 +542,14 @@ class KeyboardView @JvmOverloads constructor(
         dismissPopup()
         if (selected != null) {
             val charKey = Key.char(selected)
-            listener?.onKey(charKey, modifiers)
-            modifiers.consumeAfterChar()
+            listener?.onKey(charKey, chord)
             refresh()
         }
         // else: silently dismiss — the user slid off and released, no commit.
     }
 
     override fun onKeyPopupCancel(view: KeyView) {
+        resetModifiers()
         if (trackpadActive) { endTrackpad(); return }
         if (actionMenuView != null) { dismissActionMenu(); return }
         dismissPopup()
@@ -502,6 +580,7 @@ class KeyboardView @JvmOverloads constructor(
         // without a manifest change.
         val items = langItems + listOf(
             MenuItem(fnRowIcon, "Function row (Esc, F1…)", MenuAction.ToggleFunctionRow),
+            MenuItem("🔣", "123 Symbols",       MenuAction.OpenSymbols),
             MenuItem("🎤", "Voice input",       MenuAction.OpenVoiceInput),
             MenuItem("😀", "Emoji",            MenuAction.OpenEmoji),
             MenuItem("📋", "Clipboard",        MenuAction.OpenClipboard),
@@ -575,7 +654,7 @@ class KeyboardView @JvmOverloads constructor(
         // Don't bleed into the transparent popup zone above the keys —
         // the action menu is opaque and should stay aligned with the
         // keyboard area, same as the picker / clipboard overlays.
-        val keysTop = dp(POPUP_ZONE_DP)
+        val keysTop = dp(popupZoneHeightDp)
         if (y < keysTop) y = keysTop
 
         val lp = LayoutParams(w, h).apply {
@@ -618,7 +697,7 @@ class KeyboardView @JvmOverloads constructor(
         // Offset the overlay below popupZone so it fills only the actual
         // keys area, not the empty transparent zone above the keyboard.
         addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
-            topMargin = dp(POPUP_ZONE_DP)
+            topMargin = dp(popupZoneHeightDp)
         })
     }
 
@@ -660,7 +739,7 @@ class KeyboardView @JvmOverloads constructor(
         voiceInputView = view
         rowsContainer.visibility = INVISIBLE
         addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
-            topMargin = dp(POPUP_ZONE_DP)
+            topMargin = dp(popupZoneHeightDp)
         })
     }
 
@@ -805,7 +884,7 @@ class KeyboardView @JvmOverloads constructor(
         clipboardView = view
         rowsContainer.visibility = INVISIBLE
         addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
-            topMargin = dp(POPUP_ZONE_DP)
+            topMargin = dp(popupZoneHeightDp)
         })
     }
 
@@ -941,7 +1020,7 @@ class KeyboardView @JvmOverloads constructor(
         // ACTION_CANCEL on the still-active space-press gesture, which would
         // immediately tear the trackpad back down.
         addView(tp, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
-            topMargin = dp(POPUP_ZONE_DP)
+            topMargin = dp(popupZoneHeightDp)
         })
     }
 
@@ -1026,7 +1105,9 @@ class KeyboardView @JvmOverloads constructor(
         const val TRACKPAD_PX_PER_LINE_DP = 36f
     }
 
+    /** Cancels held-key repetition before a rotated or dismissed keyboard loses its window. */
     override fun onDetachedFromWindow() {
+        resetModifiers()
         dismissPopup()
         dismissActionMenu()
         endTrackpad()
@@ -1035,13 +1116,41 @@ class KeyboardView @JvmOverloads constructor(
         super.onDetachedFromWindow()
     }
 
+    /** Invalidates active touches when an attached keyboard is hidden without being detached. */
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (visibility != View.VISIBLE && layoutData != null) resetModifiers()
+    }
+
+    /** Stops delayed events and prevents stale touch-up events from dispatching after a reset. */
+    private fun cancelPendingInput() {
+        repeatRunnables.values.forEach { handler.removeCallbacks(it) }
+        repeatRunnables.clear()
+        pressedKeys.forEach { it.cancelPendingTouch() }
+        pressedKeys.clear()
+        keyModifiers.clear()
+        repeatedKeys.clear()
+    }
+
+    /** Keeps the initial chord, then samples current modifiers for each subsequent repeat. */
     private fun startRepeat(view: KeyView) {
         val initialDelay = 350L
         val interval = 45L
         val runnable = object : Runnable {
             override fun run() {
-                listener?.onKey(view.key, modifiers)
-                handler.postDelayed(this, interval)
+                if (view !in pressedKeys) return
+                val chord = if (repeatedKeys.add(view)) {
+                    keyModifiers[view] ?: modifiers.snapshot()
+                } else {
+                    modifiers.snapshot().also { modifiers.consumeAfterChar() }
+                }
+                if (chord.shouldSendAsKeyEvent() || chord.isShiftModifierActive()) {
+                    pressedKeys.forEach { it.suppressLongPress() }
+                }
+                listener?.onKey(view.key, chord)
+                if (view in pressedKeys && repeatRunnables[view] === this) {
+                    handler.postDelayed(this, interval)
+                }
             }
         }
         repeatRunnables[view] = runnable
@@ -1052,7 +1161,8 @@ class KeyboardView @JvmOverloads constructor(
         repeatRunnables.remove(view)?.also { handler.removeCallbacks(it) }
     }
 
-    private fun handleKey(key: Key) {
+    /** Applies modifier toggles locally and forwards non-modifier keys to the service. */
+    private fun handleKey(key: Key, chord: ModifierState = modifiers) {
         // While the emoji search header is mounted the keyboard's char,
         // letter, space and backspace keys steer the query instead of the
         // input field; modifier presses still toggle their state so visual
@@ -1078,8 +1188,15 @@ class KeyboardView @JvmOverloads constructor(
                 }
                 KeyType.SHIFT -> { modifiers.tapShift(); refresh(); return }
                 KeyType.CTRL -> { modifiers.tapCtrl(); refresh(); return }
-                KeyType.ALT -> { modifiers.tapAlt(); refresh(); return }
-                KeyType.META -> { modifiers.tapMeta(); refresh(); return }
+                KeyType.ALT -> {
+                    modifiers.tapAlt(ModifierSide.fromKeyCode(key.keyCode)); refresh(); return
+                }
+                KeyType.META -> {
+                    modifiers.tapMeta(ModifierSide.fromKeyCode(key.keyCode)); refresh(); return
+                }
+                KeyType.FN -> if (key.keyCode == KeyEvent.KEYCODE_FUNCTION) {
+                    modifiers.tapFn(); refresh(); return
+                }
                 KeyType.CAPS_LOCK -> { modifiers.toggleCapsLock(); refresh(); return }
                 else -> { refresh(); return }
             }
@@ -1088,16 +1205,24 @@ class KeyboardView @JvmOverloads constructor(
         val isModifierToggle = when (key.type) {
             KeyType.SHIFT -> { modifiers.tapShift(); true }
             KeyType.CTRL -> { modifiers.tapCtrl(); true }
-            KeyType.ALT -> { modifiers.tapAlt(); true }
-            KeyType.META -> { modifiers.tapMeta(); true }
+            KeyType.ALT -> {
+                modifiers.tapAlt(ModifierSide.fromKeyCode(key.keyCode)); true
+            }
+            KeyType.META -> {
+                modifiers.tapMeta(ModifierSide.fromKeyCode(key.keyCode)); true
+            }
+            KeyType.FN -> if (key.keyCode == KeyEvent.KEYCODE_FUNCTION) {
+                modifiers.tapFn(); true
+            } else {
+                false
+            }
             KeyType.CAPS_LOCK -> { modifiers.toggleCapsLock(); true }
             // Globe tap is intentionally a no-op — long-press shows the menu.
             KeyType.LANGUAGE_SWITCH -> true
             else -> false
         }
         if (!isModifierToggle) {
-            listener?.onKey(key, modifiers)
-            modifiers.consumeAfterChar()
+            listener?.onKey(key, chord)
         }
         refresh()
     }
